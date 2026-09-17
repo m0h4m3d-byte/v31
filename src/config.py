@@ -30,6 +30,14 @@ SELL_HOLD_DAY = {"MILK": 0, "WOOL": 0, "EGG": 0, "STRAWBERRY": 0}
 # (shed>=SHED_DUMP_AT) or final liquidation (day>=LIQUIDATE_DAY). Selling at
 # $1-5 wastes harvest/haul labor for ~zero revenue; waiting is cheaper.
 SELL_FLOOR_MIN = 10
+# Melon early exit (BULL/BAIL mirror of milk): classify once when first
+# harvests land; bulls hold for the peak, bailouts dump at the first -20%
+# slide instead of riding to $1 (seed 11: 271 -> 1 in 4 days).
+MELON_BULL_DAY = 10
+MELON_BULL_PRICE = 260
+MELON_BULL_HOLD_DAY = 14
+MELON_BAIL_FROM_DAY = 12
+MELON_BAIL_FACTOR = 0.80
 MILK_BULL_D12 = 180
 MILK_BULL_HOLD_DAY = 20
 MILK_BAIL_FROM_DAY = 16
