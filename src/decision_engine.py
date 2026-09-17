@@ -14,6 +14,10 @@ Usage:
 """
 
 from src.market_model import MarketModel, TownDemand
+from src.config import (
+    MELON_LAST_DAY, STRAWBERRY_LAST_DAY,
+    CARROT_OPP_LAST_DAY, TOMATO_OPP_LAST_DAY, CROP_LINK_MARGIN,
+)
 
 # Products we may strategically hold back (perishables excluded).
 HOLDABLE = {"MILK", "WOOL", "WHEAT", "CARROT", "EGG", "TOMATO", "STRAWBERRY", "MELON", "FERTILIZER"}
@@ -81,6 +85,50 @@ def crop_ranking_from_ctx(market_ctx):
         scored.append((roi_per_day, crop))
     scored.sort(reverse=True)
     return [(crop, roi) for roi, crop in scored]
+
+
+def linked_crop_order(day, market_ctx):
+    """ONE shared planting order for seed buying (economy) and planting
+    (planner), ranked by projected ROI/tile/day with margin.
+
+    Rules: core (STRAWBERRY/MELON/WHEAT) ordered best-first inside their
+    seasons; WHEAT always kept as staple fallback; CARROT/TOMATO join ONLY
+    by beating wheat x CROP_LINK_MARGIN. Unfinishable crops excluded.
+    Returns None on any failure (caller falls back to legacy order).
+    """
+    try:
+        ranked = crop_ranking_from_ctx(market_ctx)
+    except Exception:
+        return None
+    try:
+        roi = {c: r for c, r in ranked}
+        DEAD = -1e8
+
+        def ok(crop):
+            if roi.get(crop, DEAD) <= DEAD:
+                return False
+            if crop == "STRAWBERRY" and day > STRAWBERRY_LAST_DAY:
+                return False
+            if crop == "MELON" and day > MELON_LAST_DAY:
+                return False
+            if crop == "CARROT" and day > CARROT_OPP_LAST_DAY:
+                return False
+            if crop == "TOMATO" and day > TOMATO_OPP_LAST_DAY:
+                return False
+            return True
+
+        core = [c for c in ("STRAWBERRY", "MELON", "WHEAT") if ok(c)]
+        core.sort(key=lambda c: roi.get(c, -1e18), reverse=True)
+        if "WHEAT" not in core:
+            core.append("WHEAT")  # staple fallback, never plant nothing
+        out = list(core)
+        wheat_roi = roi.get("WHEAT", -1e18)
+        for cte in ("CARROT", "TOMATO"):
+            if ok(cte) and roi.get(cte, -1e18) >= CROP_LINK_MARGIN * wheat_roi:
+                out.append(cte)
+        return out or None
+    except Exception:
+        return None
 
 
 class SellAdvisor:

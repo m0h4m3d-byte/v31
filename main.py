@@ -104,7 +104,8 @@ class Agent:
         # Mirrors the monolith's Agent._market_orders exactly for parity
         orders = self.market.build_orders(
             day, self.hour, me, shed, seeds, prices, money, invs,
-            unlocked_shops=list((obs.get("town") or {}).get("unlocked_shops") or [])
+            unlocked_shops=list((obs.get("town") or {}).get("unlocked_shops") or []),
+            market_inventory=market.get("inventory", {}),
         )
 
         # --- Step 1.5: Solution A - Price-projective sell decision with threshold ---

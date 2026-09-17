@@ -191,8 +191,20 @@ ANIMAL_PRODUCT_SCHEDULE = {
     "WOOL": 6,
     "EGG": 16,
 }
-# Opportunistic GOOSE trial: max 2, ONLY when egg shops (BAKERY/BRUNCH_SPOT)
-# are visible from day 3. Else PLAN (0). One coop at (0,0); negligible feed.
-GOOSE_OPP_CAP = 2
+# Linked crop order (ROI gate): ONE ranking drives both seed buying
+# (economy) and planting (planner). CTE joins only by CLEARLY beating the
+# staple (margin filters noise-level edges like d0 CARROT 27 vs WHEAT 26;
+# real hinge explosions like drained CARROT 3629 pass easily).
+# CTE joins only on true hinge explosions (e.g. drained CARROT 3629);
+# noise-level edges stay out.
+CROP_LINK_ON = True
+CROP_LINK_MARGIN = 2.0
+# CTE trial caps (used only when the linked order admits them).
+CARROT_OPP_TARGET = 6
+CARROT_OPP_LAST_DAY = 24
+CARROT_OPP_CAP = 3
+TOMATO_OPP_TARGET = 4
+TOMATO_OPP_LAST_DAY = 21
+TOMATO_OPP_CAP = 2
 
 

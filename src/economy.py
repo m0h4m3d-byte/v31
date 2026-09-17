@@ -34,7 +34,10 @@ from src.config import (
     P4_SHEEP_CAP_V2, P4_SHEEP_CAP_V2B, P4_SHEEP_CAP_V2A, P4V2_FLOOR, P4V2_RESUME_DAY,
     P4_V3_ADAPTIVE, P4V3_QUIET_WINDOW0, P4V3_QUIET_WINDOW1, P4V3_WOOL_THRESHOLD,
     P7_RELEASE_V1, P7_WOOL_HOLD_DAY, P7_WOOL_EARLY_DAY, P7_WOOL_SELL_CAP,
-    LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER, GOOSE_OPP_CAP,
+    LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER,
+    CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY, CARROT_OPP_CAP,
+    TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY, TOMATO_OPP_CAP,
+    CROP_LINK_ON,
 )
 
 
@@ -108,11 +111,13 @@ class MarketEngine:
         return total
 
     def build_orders(self, day: int, hour: int, me, shed, seeds, prices, money, invs,
-                     unlocked_shops=None) -> List[list]:
+                     unlocked_shops=None, market_inventory=None) -> List[list]:
         """Return the market orders list. Mirrors Agent._market_orders exactly.
 
         unlocked_shops: obs.town.unlocked_shops (P5 signal); None/absent on
         the OFF path so behaviour stays bit-identical to GOLDEN_BASELINE.
+        market_inventory: shared market supply; enables the linked ROI crop
+        order (None => legacy behavior, no CTE seeds).
         """
         self._on_day(day)
         orders = []
@@ -183,6 +188,25 @@ class MarketEngine:
         # User plan: WHEAT 15 MELON 5 (2825$) — cap melon 5 day0
         seed_plan = {"WHEAT": (15, 24, 8, 0), "MELON": (5, 10, 5 if day == 0 else 6, 0),
                      "STRAWBERRY": (PLAN["STRAWBERRY"], 14, 10, 3)}
+        # Linked ROI gate (single source with planner): CTE seeds join ONLY
+        # when the shared ranking admits them (beating wheat x margin).
+        if CROP_LINK_ON and market_inventory is not None and day >= 3:
+            try:
+                from src.decision_engine import linked_crop_order
+                _linked = linked_crop_order(day, {
+                    "day": day,
+                    "inventory": dict(market_inventory),
+                    "shops": list(unlocked_shops or []),
+                })
+            except Exception:
+                _linked = None
+            if _linked:
+                if "CARROT" in _linked:
+                    seed_plan["CARROT"] = (CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY,
+                                           CARROT_OPP_CAP, 3)
+                if "TOMATO" in _linked:
+                    seed_plan["TOMATO"] = (TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY,
+                                           TOMATO_OPP_CAP, 3)
         for crop, (target, last_day, cap, start_day) in seed_plan.items():
             if day > last_day or day < start_day:
                 continue
@@ -295,15 +319,7 @@ class MarketEngine:
                 if (wool_now < WOOL_CRASH_PRICE
                         or (wool_peak >= 100 and wool_now < WOOL_CRASH_DROP * wool_peak)):
                     sheep_target = min(sheep_target, WOOL_NO_YARN_CAP)
-            # Opportunistic GOOSE trial: egg shops only, else PLAN (0).
-            # One coop at (0,0); cap keeps feed overhead negligible.
-            _egg_shops = list(unlocked_shops or [])
-            if _egg_shops and day >= 3 and ("BAKERY" in _egg_shops or "BRUNCH_SPOT" in _egg_shops):
-                goose_target = GOOSE_OPP_CAP
-            else:
-                goose_target = PLAN.get("GOOSE", 0)
-            for animal, target in (("SHEEP", sheep_target), ("COW", cow_target),
-                                   ("GOOSE", goose_target)):
+            for animal, target in (("SHEEP", sheep_target), ("COW", cow_target)):
                 # no-waste-buying: skip if beyond last viable day for this animal
                 if day > _ANIMAL_LAST_DAY.get(animal, 24):
                     continue

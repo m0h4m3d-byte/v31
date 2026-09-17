@@ -17,6 +17,8 @@ from src.config import (
     STRAW_LEAD_THRESHOLD, ADVISOR_MIN_DAY,
     LAST_PLAYABLE_DAY,
     PASTURE_LOCATIONS,
+    CARROT_OPP_LAST_DAY, TOMATO_OPP_LAST_DAY,
+    CROP_LINK_ON,
 )
 
 # --- Day gates (were src/strategy.py — logic lives here, numbers live in config.py) ---
@@ -67,6 +69,18 @@ def _advisor_crop_order(day, market_ctx):
             order.append(crop)
     if straw_active and not straw_ok:
         order.append("STRAWBERRY")  # still plant some if nothing else fits
+    if CROP_LINK_ON:
+        # Narrow ROI gate: legacy core order untouched; ROI admits CTE only
+        # (shared ranking with economy seed buying — one source, no reorder).
+        try:
+            from src.decision_engine import linked_crop_order
+            linked = linked_crop_order(day, market_ctx)
+            if linked:
+                for cte in ("CARROT", "TOMATO"):
+                    if cte in linked and cte not in order and _crop_season_active(cte, day):
+                        order.append(cte)
+        except Exception:
+            pass
     return order or list(DEFAULT_CROP_ORDER)
 
 
@@ -75,6 +89,10 @@ def _crop_season_active(crop, day):
         return is_strawberry_season(day)
     if crop == "MELON":
         return is_melon_season(day)
+    if crop == "CARROT":
+        return day <= CARROT_OPP_LAST_DAY
+    if crop == "TOMATO":
+        return day <= TOMATO_OPP_LAST_DAY
     return True
 
 def _snake_order_for_quadrant(q: str):
