@@ -206,5 +206,9 @@ CARROT_OPP_CAP = 3
 TOMATO_OPP_TARGET = 4
 TOMATO_OPP_LAST_DAY = 21
 TOMATO_OPP_CAP = 2
+# Opportunistic GOOSE trial: max 2, ONLY when egg shops (BAKERY/BRUNCH_SPOT)
+# are visible from day 3. Else PLAN (0). (Diagnostic history: bought but
+# never placed in solo 30/30 with COOP at (0,0); kept for ladder timing.)
+GOOSE_OPP_CAP = 2
 
 
