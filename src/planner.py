@@ -17,6 +17,7 @@ from src.config import (
     STRAW_LEAD_THRESHOLD, ADVISOR_MIN_DAY,
     LAST_PLAYABLE_DAY,
     PASTURE_LOCATIONS,
+    FLEX_FEED_ON, FLEX_FEED_WHEAT_BUFFER,
 )
 
 # --- Day gates (were src/strategy.py — logic lives here, numbers live in config.py) ---
@@ -190,6 +191,14 @@ class FarmPlanner:
                              if isinstance(t, dict) and t.get("kind") == "PLANT"
                              and t.get("crop") == "MELON")
         wheat_available = shed.get("WHEAT", 0) > 0 or any(i.get("WHEAT", 0) > 0 for i in invs)
+        # Flexible-feeding inputs: live prices. One banked bonus unit is worth
+        # ~one product unit, so skipping feed is profitable only when the wheat
+        # it costs exceeds the product price it would create (price gate
+        # replaces the old stock-scarcity gate, which fired too often).
+        _px = (market_ctx or {}).get("prices") or {}
+        _wheat_price = _px.get("WHEAT", 25)
+        _prod_of = {"COW": "MILK", "SHEEP": "WOOL", "GOOSE": "EGG"}
+        _prod_price = {a: _px.get(p, 0) for a, p in _prod_of.items()}
         # Snake order for WATER/FERTILIZE/HARVEST as well: iterate tiles in snake order from shed
         snake_tiles = sorted([(x, y) for y in range(10) for x in range(10)], key=lambda p: _SNAKE_INDEX.get(p, 99))
         for x, y in snake_tiles:
@@ -205,9 +214,21 @@ class FarmPlanner:
                     is_crashed_animal = bool(market_ctx and market_ctx.get("milk_crash") and animal == "COW")
                     skip_care_end = is_end_phase_animal and is_crashed_animal
                     if not skip_care_end:
-                        if not t.get("fed_today") and wheat_available:
+                        # Flexible feeding: skip one day when escape-impossible
+                        # (unfed 0->1), nothing banked/pending, AND the wheat
+                        # costs more than the bonus unit it would create.
+                        # CARE skipped jointly (banks nothing without FEED).
+                        _flex_skip = (
+                            FLEX_FEED_ON
+                            and not t.get("fed_today")
+                            and t.get("consecutive_unfed", 0) == 0
+                            and t.get("pending_care_bonus", 0) == 0
+                            and t.get("yield_units", 0) == 0
+                            and _wheat_price > _prod_price.get(animal, 0)
+                        )
+                        if not t.get("fed_today") and wheat_available and not _flex_skip:
                             jobs.append((pos, "FEED", 0))
-                        if not t.get("cared_today"):
+                        if not t.get("cared_today") and not _flex_skip:
                             jobs.append((pos, "CARE", 1))
                     # حتى الحيوان المهمل في النهاية: لا تجمع سماد (توفير عامل)
                     if not skip_care_end and t.get("fertilizer_available"):

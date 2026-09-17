@@ -184,5 +184,13 @@ ANIMAL_PRODUCT_SCHEDULE = {
 # Opportunistic GOOSE trial: max 2, ONLY when egg shops (BAKERY/BRUNCH_SPOT)
 # are visible from day 3. Else PLAN (0). One coop at (0,0); negligible feed.
 GOOSE_OPP_CAP = 2
+# Flexible feeding: skip FEED (and its useless CARE) for one day when ALL hold:
+#   consecutive_unfed==0 (escape-impossible: 0->1, fed tomorrow ->0, never 2),
+#   pending_care_bonus==0 (no banked bonus at stake),
+#   yield_units==0 (no unharvested product),
+#   total wheat <= animals + buffer (economize only when wheat not abundant).
+# CARE without FEED banks nothing, so it is skipped together (saves labor too).
+FLEX_FEED_ON = True
+FLEX_FEED_WHEAT_BUFFER = 4
 
 
