@@ -14,6 +14,7 @@ from typing import Dict, List
 from src.config import (
     PLAN, FEED_RESERVE, FERT_RESERVE,
     ANIMAL_ADVISOR_ON, MILK_CRASH_PRICE, ANIMAL_ADVISOR_MIN_DAY, MILK_TREND_DROP,
+    WOOL_CRASH_PRICE, WOOL_CRASH_MIN_DAY, WOOL_CRASH_DROP, WOOL_NO_YARN_CAP,
     PASTURE_BUFFER, HIRE_TARGET, HIRE_RAMP,
 )
 
@@ -33,7 +34,7 @@ from src.config import (
     P4_SHEEP_CAP_V2, P4_SHEEP_CAP_V2B, P4_SHEEP_CAP_V2A, P4V2_FLOOR, P4V2_RESUME_DAY,
     P4_V3_ADAPTIVE, P4V3_QUIET_WINDOW0, P4V3_QUIET_WINDOW1, P4V3_WOOL_THRESHOLD,
     P7_RELEASE_V1, P7_WOOL_HOLD_DAY, P7_WOOL_EARLY_DAY, P7_WOOL_SELL_CAP,
-    LAND_COSTS, LAND_DAYS, GOOSE_OPP_CAP,
+    LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER, GOOSE_OPP_CAP,
 )
 
 
@@ -165,7 +166,10 @@ class MarketEngine:
         unlocked = len(me.get("unlocked_quadrants", []))
         # was: 0 < unlocked < len(LAND_COSTS)+1 (allows 4th at day12); now cap at 3 quadrants
         if 0 < unlocked < len(LAND_COSTS) and day >= LAND_DAYS[unlocked - 1]:
-            buy("land", 1, LAND_COSTS[unlocked - 1], ["BUY_LAND"])
+            # Liquidity gate: keep operating buffer after paying (blocks
+            # NE-with-$115 / SW-with-$25 buys; neutral once rich).
+            buy("land", 1, LAND_COSTS[unlocked - 1], ["BUY_LAND"],
+                floor=LAND_BUY_BUFFER)
 
         wheat_price = prices.get("WHEAT", 25)
         need_reserve = 4 if wheat_price <= 35 else 0
@@ -264,9 +268,33 @@ class MarketEngine:
                     crash_fired = True
                     cow_frozen = cows + self._unplaced_animal(invs, shed, "COW")
                     cow_target = cow_frozen
-                    sheep_target = max(sheep_target,
-                                       PLAN["COW"] + PLAN["SHEEP"] - cow_frozen)
+                    # Wool guard: never redirect the pen budget into sheep
+                    # when wool itself is crashing in a no-YARN world.
+                    wool_now_g = prices.get("WOOL", 200)
+                    wool_crash_g = (
+                        unlocked_shops is not None
+                        and "YARN_STORE" not in unlocked_shops
+                        and day >= WOOL_CRASH_MIN_DAY
+                        and (wool_now_g < WOOL_CRASH_PRICE
+                             or (self.wool_season_max is not None
+                                 and self.wool_season_max >= 100
+                                 and wool_now_g < WOOL_CRASH_DROP * self.wool_season_max)))
+                    if not wool_crash_g:
+                        sheep_target = max(sheep_target,
+                                           PLAN["COW"] + PLAN["SHEEP"] - cow_frozen)
             self.milk_crash_active = crash_fired
+            # Wool crash breaker: no-YARN + collapsed wool => hard sheep
+            # cap. Tightens the V2A floor (8, ineffective vs PLAN 5) down
+            # to WOOL_NO_YARN_CAP only when wool is actually weak, so
+            # healthy no-YARN worlds keep PLAN behavior (neutral).
+            if (ANIMAL_ADVISOR_ON and unlocked_shops is not None
+                    and day >= WOOL_CRASH_MIN_DAY
+                    and "YARN_STORE" not in unlocked_shops):
+                wool_now = prices.get("WOOL", 200)
+                wool_peak = self.wool_season_max if self.wool_season_max else wool_now
+                if (wool_now < WOOL_CRASH_PRICE
+                        or (wool_peak >= 100 and wool_now < WOOL_CRASH_DROP * wool_peak)):
+                    sheep_target = min(sheep_target, WOOL_NO_YARN_CAP)
             # Opportunistic GOOSE trial: egg shops only, else PLAN (0).
             # One coop at (0,0); cap keeps feed overhead negligible.
             _egg_shops = list(unlocked_shops or [])

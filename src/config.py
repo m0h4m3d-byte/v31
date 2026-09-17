@@ -14,6 +14,9 @@ PLAN = {"COW": 10, "SHEEP": 5, "GOOSE": 0, "MELON": 12, "STRAWBERRY": 20, "WHEAT
 
 LAND_COSTS = [1000, 2000, 4000]
 LAND_DAYS = [6, 9, 12]
+# Liquidity gate: cash that must remain AFTER paying land cost.
+# Blocks NE-with-$115 / SW-with-$25 buys; neutral once rich.
+LAND_BUY_BUFFER = 300
 
 HIRE_TARGET = 12
 HIRE_RAMP = 4
@@ -57,6 +60,13 @@ ANIMAL_ADVISOR_ON = True
 MILK_CRASH_PRICE = 120
 ANIMAL_ADVISOR_MIN_DAY = 10
 MILK_TREND_DROP = 0.75
+# Wool crash breaker (mirror of milk logic): no-YARN worlds where wool
+# collapses need a sheep freeze, otherwise the milk-crash redirect below
+# pours the pen budget into the crashing good. Neutral with YARN present.
+WOOL_CRASH_PRICE = 100
+WOOL_CRASH_MIN_DAY = 10
+WOOL_CRASH_DROP = 0.60
+WOOL_NO_YARN_CAP = 2
 
 # ============================================================
 # Board layout — single source for pastures — 15 central contiguous (5 per quad)
@@ -184,13 +194,5 @@ ANIMAL_PRODUCT_SCHEDULE = {
 # Opportunistic GOOSE trial: max 2, ONLY when egg shops (BAKERY/BRUNCH_SPOT)
 # are visible from day 3. Else PLAN (0). One coop at (0,0); negligible feed.
 GOOSE_OPP_CAP = 2
-# Flexible feeding: skip FEED (and its useless CARE) for one day when ALL hold:
-#   consecutive_unfed==0 (escape-impossible: 0->1, fed tomorrow ->0, never 2),
-#   pending_care_bonus==0 (no banked bonus at stake),
-#   yield_units==0 (no unharvested product),
-#   total wheat <= animals + buffer (economize only when wheat not abundant).
-# CARE without FEED banks nothing, so it is skipped together (saves labor too).
-FLEX_FEED_ON = True
-FLEX_FEED_WHEAT_BUFFER = 4
 
 
