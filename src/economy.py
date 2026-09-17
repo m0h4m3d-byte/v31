@@ -22,6 +22,10 @@ RESERVE = 15
 from src.config import (
     SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY, SELL_FLOOR_MIN, LIQUIDATE_DAY,
     MILK_BULL_D12, MILK_BULL_HOLD_DAY, MILK_BAIL_FROM_DAY, MILK_BAIL_FACTOR,
+    MELON_BULL_DAY, MELON_BULL_PRICE, MELON_BULL_HOLD_DAY,
+    MELON_BAIL_FROM_DAY, MELON_BAIL_FACTOR,
+    STRAW_BULL_DAY, STRAW_BULL_PRICE, STRAW_BULL_HOLD_DAY,
+    STRAW_BAIL_FROM_DAY, STRAW_BAIL_FACTOR,
     ANIMALS, SEED_COST, BASE,
     MARKET_AWARE_ON, MARKET_AWARE_CAPS,
 )
@@ -74,6 +78,10 @@ class MarketEngine:
         self.milk_bull = None
         self.milk_d12_price = None
         self.bail_fires = 0
+        self.melon_bull = None
+        self.melon_d10_price = None
+        self.straw_bull = None
+        self.straw_d12_price = None
         self.wool_season_max = None
         self.milk_peak = 0.0
         self.milk_crash_active = False
@@ -463,16 +471,48 @@ class MarketEngine:
             sell_capped("FERTILIZER", fert - fert_reserve, cap)
 
         melon = shed.get("MELON", 0)
+        # Melon early exit: classify once at first-harvest age; bulls hold
+        # for the peak window, bailouts release at the first -20% slide
+        # instead of riding the flush to $1. Non-bulls keep legacy day>=12.
+        # NOTE: the legacy price>=30 clause is suspended under bull hold,
+        # otherwise it bypasses the hold on day one (prices start ~270).
+        if day == MELON_BULL_DAY and self.melon_bull is None:
+            self.melon_bull = prices.get("MELON", 250) >= MELON_BULL_PRICE
+            self.melon_d10_price = prices.get("MELON", 250)
+        melon_gate = MELON_BULL_HOLD_DAY if self.melon_bull else 12
+        if (self.melon_bull and self.melon_d10_price
+                and MELON_BAIL_FROM_DAY <= day < MELON_BULL_HOLD_DAY
+                and prices.get("MELON", 250) < MELON_BAIL_FACTOR * self.melon_d10_price):
+            melon_gate = day
+            self.bail_fires += 1
+        bull_hold = bool(self.melon_bull) and day < melon_gate
         if melon > 0 and (force_dump or day >= LIQUIDATE_DAY
-                          or ((prices.get("MELON", 250) >= 30 or day >= 12)
+                          or (not bull_hold
+                              and (prices.get("MELON", 250) >= 30 or day >= melon_gate)
                               and prices.get("MELON", 250) >= SELL_FLOOR_MIN)):
             cap = MARKET_AWARE_CAPS["MELON"] if MARKET_AWARE_ON else 80
             sell_capped("MELON", melon, cap)
 
         strawberry = shed.get("STRAWBERRY", 0)
+        # Strawberry early exit (BULL/BAIL template): classify at first-flush
+        # age on the advisor-trusted 190; bulls hold through the last flush
+        # (16), bailouts release at the first -20% slide inside 13-15.
+        # NOTE: the legacy day>=0 clause always passed, so the bull hold
+        # only binds by suspending it (same fix as melon price>=30).
+        if day == STRAW_BULL_DAY and self.straw_bull is None:
+            self.straw_bull = prices.get("STRAWBERRY", 120) >= STRAW_BULL_PRICE
+            self.straw_d12_price = prices.get("STRAWBERRY", 120)
+        straw_gate = STRAW_BULL_HOLD_DAY if self.straw_bull else SELL_HOLD_DAY["STRAWBERRY"]
+        if (self.straw_bull and self.straw_d12_price
+                and STRAW_BAIL_FROM_DAY <= day < STRAW_BULL_HOLD_DAY
+                and prices.get("STRAWBERRY", 120) < STRAW_BAIL_FACTOR * self.straw_d12_price):
+            straw_gate = day
+            self.bail_fires += 1
+        straw_hold = bool(self.straw_bull) and day < straw_gate
         if strawberry > 0 and (force_dump or day >= LIQUIDATE_DAY
-                               or ((prices.get("STRAWBERRY", 120) >= 30
-                                    or day >= SELL_HOLD_DAY["STRAWBERRY"])
+                               or (not straw_hold
+                                   and (prices.get("STRAWBERRY", 120) >= 30
+                                        or day >= max(straw_gate, SELL_HOLD_DAY["STRAWBERRY"]))
                                    and prices.get("STRAWBERRY", 120) >= SELL_FLOOR_MIN)):
             cap = MARKET_AWARE_CAPS["STRAWBERRY"] if MARKET_AWARE_ON else 80
             sell_capped("STRAWBERRY", strawberry, cap)
