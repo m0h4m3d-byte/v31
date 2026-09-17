@@ -37,10 +37,13 @@ MILK_BAIL_FACTOR = 0.85
 
 MARKET_AWARE_ON = True  # was KAGG_MARKET_AWARE=1 default ON
 MARKET_AWARE_CAPS = {
-    "MELON": 25,
-    "WOOL": 30,
-    "MILK": 40,
-    "STRAWBERRY": 50,
+    # Tranches, not floods: halved premium caps spread flush-day dumps over
+    # several days at higher average prices (caps bind on flushes, rarely on
+    # daily production). Staples keep full flow (they absorb gluts).
+    "MELON": 12,
+    "WOOL": 15,
+    "MILK": 20,
+    "STRAWBERRY": 25,
     "EGG": 80,
     "WHEAT": 150,
     "FERTILIZER": 80,
