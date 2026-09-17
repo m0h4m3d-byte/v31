@@ -20,48 +20,7 @@ from src.economy import MarketEngine
 from src.planner import FarmPlanner
 from src.decision_engine import SellAdvisor
 from src.constants import CROP_CONFIG
-from src.config import LAST_PLAYABLE_DAY, SHED_CAPACITY
-
-# ============================================================
-# CROP_MAX_PLANT_DAY (Solution B)
-# ============================================================
-# Latest day to plant each crop for reliable maturation before season end (day 29).
-CROP_MAX_PLANT_DAY = {
-    "WHEAT": 27,       # first_yield=2, 27+2=29
-    "CARROT": 27,      # first_yield=2
-    "TOMATO": 21,      # first_yield=8, ongoing crop - plant by day 21 for full season
-    "STRAWBERRY": 19,  # first_yield=10, plant by day 19 for full 10-day yield window
-    "MELON": 19,       # first_yield=10, melon_cap=28 limits field density
-}
-
-# ============================================================
-# ANIMAL_LAST_BUY_DAY (Solution C)
-# ============================================================
-# Latest day to buy each animal type for reliable yield before season end (day 29).
-# A animal bought on day d can first yield on day d + first_yield_day.
-# Must have d + first_yield_day <= 29 to yield this season.
-# Derived from economy.py _ANIMAL_LAST_DAY and CROP_CONFIG timing.
-#
-# Format: {animal: last_buy_day}
-ANIMAL_LAST_BUY_DAY = {
-    "GOOSE": 25,       # first_yield=4, 25+4=29
-    "SHEEP": 23,       # first_yield=6, 23+6=29
-    "COW": 21,         # first_yield=8, 21+8=29
-}
-
-# ============================================================
-# ANIMAL_PRODUCT_SCHEDULE (Solution C)
-# ============================================================
-# Optimal sell days for each animal product based on price projections.
-# These days maximize revenue by holding through initial yield then selling
-# before price drops or season end.
-#
-# Format: {product: optimal_sell_day}
-ANIMAL_PRODUCT_SCHEDULE = {
-    "MILK": 8,         # MILK_SELL_DAY from config - sell after initial yield window
-    "WOOL": 6,         # WOOL_SELL_DAY from config - early sell to capture price
-    "EGG": 16,         # EGG_SELL_DAY from config - mid-season sell
-}
+from src.config import LAST_PLAYABLE_DAY, CROP_MAX_PLANT_DAY
 
 
 class Agent:
@@ -87,15 +46,6 @@ class Agent:
     # Valid values tested: 1.01 (1%), 1.02 (2%), 1.035 (3.5%), 1.05 (5%), 1.075 (7.5%), 1.10 (10%)
     # Default (5%) maintains baseline parity when Solution B is active.
     SELL_THRESHOLD = 1.05
-
-    # ============================================================
-    # LABOR_EFFICIENCY_RATIO (Solution D)
-    # ============================================================
-    # Factor multiplying job priority to favor efficient task ordering.
-    # Higher values encourage workers to complete high-impact tasks first.
-    # Calibrated: 1.0 = baseline, values > 1 prioritize efficiency.
-    # Tested range: 1.0 (baseline), 1.1, 1.25, 1.5
-    LABOR_EFFICIENCY_RATIO = 1.0
 
     def __init__(self):
         self.reset()
@@ -135,6 +85,7 @@ class Agent:
             self.reset()
 
         day = obs.get("day", 0)
+        self.day = day
         self.hour = obs.get("hour", 0)
         player = obs["player"]
         me = obs["farms"][player]
@@ -242,106 +193,6 @@ class Agent:
         # before season end and are filtered out.
         filtered_jobs = self._filter_late_planting_jobs(jobs, day, seeds)
 
-        # --- Step 3.5: Solution D - Labor Efficiency Enhancement ---
-        # Apply LABOR_EFFICIENCY_RATIO to job priorities to favor efficient
-        # task ordering without reducing worker count. Higher ratios encourage
-        # workers to complete high-impact tasks first, improving overall
-        # productivity while maintaining perfect parity.
-        # Priority is at index 2 of each job tuple; preserve structure for
-        # jobs with additional elements (e.g., DEPOSIT with player index).
-        enhanced_jobs = []
-        for job in filtered_jobs:
-            if len(job) > 2:
-                # Multiply priority by efficiency ratio, round to int
-                enhanced_prio = int(self.LABOR_EFFICIENCY_RATIO * job[2])
-                # Rebuild job tuple with enhanced priority, preserving rest
-                enhanced_job = (job[0], job[1], enhanced_prio) + job[3:]
-                enhanced_jobs.append(enhanced_job)
-            else:
-                enhanced_jobs.append(job)
-        filtered_jobs = enhanced_jobs
-        # --- End Solution D ---
-        # Track animal purchases and ensure animals can yield before season end.
-        # Season ends at day 29. Animals must be bought early enough to yield.
-        # Last buy days: GOOSE=25, SHEEP=23, COW=21 (first_yield + buy_day <= 29)
-        # Also schedule product collection at optimal sell days.
-        #
-        # Rules:
-        # 1. Skip buying animals beyond their last viable day
-        # 2. Schedule product collection at optimal sell days
-        # 3. Maintain parity with economy animal logic
-        if self.day > 0:  # Only track animals after day 0
-            animals_ordered = self.market.animals_ordered
-            shed = private["shed"]
-            invs = private["inventories"]
-            
-            # Count currently owned animals
-            animal_tiles = []
-            for t in tiles:
-                if isinstance(t, dict) and "animal" in t:
-                    animal_tiles.append(t)
-            
-            cows = sum(1 for t in animal_tiles if t["animal"] == "COW")
-            sheep = sum(1 for t in animal_tiles if t["animal"] == "SHEEP")
-            geese = sum(1 for t in animal_tiles if t["animal"] == "GOOSE")
-            
-            # Track animal purchases per type with last-buy-day gates
-            for animal_type in ["COW", "SHEEP", "GOOSE"]:
-                # Get how many of this animal we've ordered cumulatively
-                ordered = animals_ordered.get(animal_type, 0)
-                # Get last viable buy day for this animal
-                last_buy_day = ANIMAL_LAST_BUY_DAY.get(animal_type, 24)
-                
-                # Skip buying if we're beyond the last buy day (unless day 0)
-                # The economy already handles this, but we reinforce it here
-                # Additional: limit total animals based on viable timing
-                if self.day > last_buy_day and ordered > 0:
-                    # Beyond last buy day: reduce future purchases
-                    # This is a soft gate - economy may have already bought
-                    pass
-            
-            # Schedule product collection at optimal sell days
-            # Check if we should sell products at optimal days
-            milk_sell_day = ANIMAL_PRODUCT_SCHEDULE.get("MILK")
-            wool_sell_day = ANIMAL_PRODUCT_SCHEDULE.get("WOOL")
-            egg_sell_day = ANIMAL_PRODUCT_SCHEDULE.get("EGG")
-            
-            # Simple check: if we're at the optimal sell day and have products, 
-            # ensure sell orders are considered (handled by market orders already)
-            # This solution primarily adds tracking and timing awareness
-        
-        # --- End Solution C ---
-
-        # --- Step 3.6: Solution E - Warehouse Management ---
-        # Optimize shed/inventory management for maximum profitability.
-        # Key rules:
-        # 1. Priority sell: MILK (day 8), WOOL (day 6), EGG (day 16) based on optimal sell days
-        # 2. Prevent overflow: Don't hold beyond shed capacity (SHED_CAPACITY=100)
-        # 3. Price-aware: Sell when projected price drop exceeds threshold
-        # 4. Maintain parity: Mirrors MarketEngine sell logic exactly
-        #
-        # Enhance existing orders with warehouse-aware sell decisions.
-        # This builds on Solution A (sell threshold) and Solution C (animal tracking).
-        if shed:
-            # Check inventory levels vs optimal sell days
-            for item in shed:
-                if item in ("MILK", "WOOL", "EGG"):
-                    # Get optimal sell day for this product
-                    optimal_sell_day = ANIMAL_PRODUCT_SCHEDULE.get(item)
-                    if optimal_sell_day is not None and day >= optimal_sell_day:
-                        # At or past optimal sell day: prioritize selling
-                        pass  # Already handled by Solution A threshold logic
-                    # else: before optimal day, rely on Solution A threshold
-            
-            # Capacity check: ensure we don't exceed shed capacity
-            total_shed_load = sum(shed.values())
-            if total_shed_load > SHED_CAPACITY:
-                # Priority dump: sell excess items starting with lowest-value/oldest
-                # This is a soft cap - MarketEngine handles hard limits
-                pass
-        
-        # --- End Solution E ---
-
         # Re-dispatch with filtered jobs
         actions = []
         used_jobs = set()
@@ -397,26 +248,6 @@ class Agent:
             else:
                 filtered.append(job)
         return filtered
-
-    # ------------------------------------------------------------------
-    # Live views kept for introspection / regression tests.
-    # ------------------------------------------------------------------
-
-    @property
-    def ordered_today(self):
-        return self.market.ordered_today
-
-    @property
-    def sold_today(self):
-        return self.market.sold_today
-
-    @property
-    def animals_ordered(self):
-        return self.market.animals_ordered
-
-    @property
-    def unit_task(self):
-        return self.planner.unit_task
 
     # ------------------------------------------------------------------
     # Global agent instance

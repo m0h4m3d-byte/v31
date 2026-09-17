@@ -154,4 +154,32 @@ P7_WOOL_HOLD_DAY = 22
 P7_WOOL_EARLY_DAY = 0  # == SELL_HOLD_DAY["WOOL"]
 P7_WOOL_SELL_CAP = 80
 
+# ============================================================
+# Planting windows / animal timing — single source of truth
+# (moved here from main.py to avoid date conflicts)
+# Latest day to plant each crop for reliable maturation (day + first_yield <= 29).
+# ============================================================
+CROP_MAX_PLANT_DAY = {
+    "WHEAT": 27,       # first_yield=2, 27+2=29
+    "CARROT": 27,      # first_yield=2
+    "TOMATO": 21,      # first_yield=8
+    "STRAWBERRY": 19,  # first_yield=10
+    "MELON": 19,       # first_yield=10
+}
+
+# Per-animal last viable buy day (day + first_yield <= 29).
+# NOTE: distinct from ANIMAL_LAST_BUY_DAY=24 (legacy global gate).
+ANIMAL_LAST_BUY_DAY_BY_TYPE = {
+    "GOOSE": 25,       # first_yield=4, 25+4=29
+    "SHEEP": 23,       # first_yield=6, 23+6=29
+    "COW": 21,         # first_yield=8, 21+8=29
+}
+
+# Optimal sell days for animal products (mirror MILK/WOOL/EGG_SELL_DAY).
+ANIMAL_PRODUCT_SCHEDULE = {
+    "MILK": 8,
+    "WOOL": 6,
+    "EGG": 16,
+}
+
 
