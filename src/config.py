@@ -26,6 +26,10 @@ SHED_CAPACITY = 100
 SHED_DUMP_AT = 80
 
 SELL_HOLD_DAY = {"MILK": 0, "WOOL": 0, "EGG": 0, "STRAWBERRY": 0}
+# Floor guard: never SELL below this live price, except overflow force-dump
+# (shed>=SHED_DUMP_AT) or final liquidation (day>=LIQUIDATE_DAY). Selling at
+# $1-5 wastes harvest/haul labor for ~zero revenue; waiting is cheaper.
+SELL_FLOOR_MIN = 10
 MILK_BULL_D12 = 180
 MILK_BULL_HOLD_DAY = 20
 MILK_BAIL_FROM_DAY = 16
@@ -33,10 +37,13 @@ MILK_BAIL_FACTOR = 0.85
 
 MARKET_AWARE_ON = True  # was KAGG_MARKET_AWARE=1 default ON
 MARKET_AWARE_CAPS = {
-    "MELON": 25,
-    "WOOL": 30,
-    "MILK": 40,
-    "STRAWBERRY": 50,
+    # Tranches, not floods: halved premium caps spread flush-day dumps over
+    # several days at higher average prices (caps bind on flushes, rarely on
+    # daily production). Staples keep full flow (they absorb gluts).
+    "MELON": 12,
+    "WOOL": 15,
+    "MILK": 20,
+    "STRAWBERRY": 25,
     "EGG": 80,
     "WHEAT": 150,
     "FERTILIZER": 80,
