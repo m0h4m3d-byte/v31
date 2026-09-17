@@ -181,5 +181,8 @@ ANIMAL_PRODUCT_SCHEDULE = {
     "WOOL": 6,
     "EGG": 16,
 }
+# Opportunistic GOOSE trial: max 2, ONLY when egg shops (BAKERY/BRUNCH_SPOT)
+# are visible from day 3. Else PLAN (0). One coop at (0,0); negligible feed.
+GOOSE_OPP_CAP = 2
 
 
