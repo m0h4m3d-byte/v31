@@ -37,7 +37,7 @@ from src.config import (
     LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER,
     CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY, CARROT_OPP_CAP,
     TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY, TOMATO_OPP_CAP,
-    CROP_LINK_ON,
+    CROP_LINK_ON, GOOSE_OPP_CAP,
 )
 
 
@@ -334,6 +334,17 @@ class MarketEngine:
                 cost = ANIMALS[animal]["cost"]
                 if n > 0 and buy("animal_" + animal, n, n * cost, ["BUY_ANIMAL", animal, n], units=n, floor=0):
                     self.animals_ordered[animal] = self.animals_ordered.get(animal, 0) + n
+            # Opportunistic GOOSE trial (kept separate: shop-gated, not ROI).
+            _egg_shops = list(unlocked_shops or [])
+            if _egg_shops and day >= 3 and ("BAKERY" in _egg_shops or "BRUNCH_SPOT" in _egg_shops):
+                _have_g = geese + self._unplaced_animal(invs, shed, "GOOSE")
+                _missing_g = GOOSE_OPP_CAP - _have_g
+                if _missing_g > 0 and day <= _ANIMAL_LAST_DAY.get("GOOSE", 24):
+                    _n = min(_missing_g, 1)
+                    if self._unplaced_animal(invs, shed, "GOOSE") < 10:
+                        if buy("animal_GOOSE", _n, _n * ANIMALS["GOOSE"]["cost"],
+                               ["BUY_ANIMAL", "GOOSE", _n], units=_n, floor=0):
+                            self.animals_ordered["GOOSE"] = self.animals_ordered.get("GOOSE", 0) + _n
 
         # BATCH-2 (P1) ENGINE #2: refill the fertilizer working stock.
         # Deliberately LAST: expansion capital (land/seeds/animals) has
