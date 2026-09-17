@@ -33,7 +33,7 @@ from src.config import (
     P4_SHEEP_CAP_V2, P4_SHEEP_CAP_V2B, P4_SHEEP_CAP_V2A, P4V2_FLOOR, P4V2_RESUME_DAY,
     P4_V3_ADAPTIVE, P4V3_QUIET_WINDOW0, P4V3_QUIET_WINDOW1, P4V3_WOOL_THRESHOLD,
     P7_RELEASE_V1, P7_WOOL_HOLD_DAY, P7_WOOL_EARLY_DAY, P7_WOOL_SELL_CAP,
-    LAND_COSTS, LAND_DAYS,
+    LAND_COSTS, LAND_DAYS, GOOSE_OPP_CAP,
 )
 
 
@@ -267,7 +267,15 @@ class MarketEngine:
                     sheep_target = max(sheep_target,
                                        PLAN["COW"] + PLAN["SHEEP"] - cow_frozen)
             self.milk_crash_active = crash_fired
-            for animal, target in (("SHEEP", sheep_target), ("COW", cow_target)):
+            # Opportunistic GOOSE trial: egg shops only, else PLAN (0).
+            # One coop at (0,0); cap keeps feed overhead negligible.
+            _egg_shops = list(unlocked_shops or [])
+            if _egg_shops and day >= 3 and ("BAKERY" in _egg_shops or "BRUNCH_SPOT" in _egg_shops):
+                goose_target = GOOSE_OPP_CAP
+            else:
+                goose_target = PLAN.get("GOOSE", 0)
+            for animal, target in (("SHEEP", sheep_target), ("COW", cow_target),
+                                   ("GOOSE", goose_target)):
                 # no-waste-buying: skip if beyond last viable day for this animal
                 if day > _ANIMAL_LAST_DAY.get(animal, 24):
                     continue
