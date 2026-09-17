@@ -26,6 +26,10 @@ SHED_CAPACITY = 100
 SHED_DUMP_AT = 80
 
 SELL_HOLD_DAY = {"MILK": 0, "WOOL": 0, "EGG": 0, "STRAWBERRY": 0}
+# Floor guard: never SELL below this live price, except overflow force-dump
+# (shed>=SHED_DUMP_AT) or final liquidation (day>=LIQUIDATE_DAY). Selling at
+# $1-5 wastes harvest/haul labor for ~zero revenue; waiting is cheaper.
+SELL_FLOOR_MIN = 10
 MILK_BULL_D12 = 180
 MILK_BULL_HOLD_DAY = 20
 MILK_BAIL_FROM_DAY = 16

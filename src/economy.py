@@ -20,7 +20,7 @@ from src.config import (
 
 RESERVE = 15
 from src.config import (
-    SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY,
+    SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY, SELL_FLOOR_MIN, LIQUIDATE_DAY,
     MILK_BULL_D12, MILK_BULL_HOLD_DAY, MILK_BAIL_FROM_DAY, MILK_BAIL_FACTOR,
     ANIMALS, SEED_COST, BASE,
     MARKET_AWARE_ON, MARKET_AWARE_CAPS,
@@ -438,7 +438,10 @@ class MarketEngine:
             amt = shed.get(p, 0)
             if p == "WOOL" and not force_dump:
                 amt -= wool_keep
-            if amt > 0 and (force_dump or day >= gate):
+            # Floor guard: below SELL_FLOOR_MIN, hold for recovery unless
+            # overflow forces it out or season liquidation demands it.
+            if amt > 0 and (force_dump or day >= LIQUIDATE_DAY
+                            or (day >= gate and prices.get(p, 0) >= SELL_FLOOR_MIN)):
                 cap = MARKET_AWARE_CAPS.get(p, 80) if MARKET_AWARE_ON else 80
                 sell_capped(p, amt, cap)
 
@@ -460,24 +463,31 @@ class MarketEngine:
             sell_capped("FERTILIZER", fert - fert_reserve, cap)
 
         melon = shed.get("MELON", 0)
-        if melon > 0 and (force_dump or prices.get("MELON", 250) >= 30 or day >= 12):
+        if melon > 0 and (force_dump or day >= LIQUIDATE_DAY
+                          or ((prices.get("MELON", 250) >= 30 or day >= 12)
+                              and prices.get("MELON", 250) >= SELL_FLOOR_MIN)):
             cap = MARKET_AWARE_CAPS["MELON"] if MARKET_AWARE_ON else 80
             sell_capped("MELON", melon, cap)
 
         strawberry = shed.get("STRAWBERRY", 0)
-        if strawberry > 0 and (force_dump or prices.get("STRAWBERRY", 120) >= 30
-                               or day >= SELL_HOLD_DAY["STRAWBERRY"]):
+        if strawberry > 0 and (force_dump or day >= LIQUIDATE_DAY
+                               or ((prices.get("STRAWBERRY", 120) >= 30
+                                    or day >= SELL_HOLD_DAY["STRAWBERRY"])
+                                   and prices.get("STRAWBERRY", 120) >= SELL_FLOOR_MIN)):
             cap = MARKET_AWARE_CAPS["STRAWBERRY"] if MARKET_AWARE_ON else 80
             sell_capped("STRAWBERRY", strawberry, cap)
 
         wheat = shed.get("WHEAT", 0)
         sell_wheat_min = 0 if force_dump else animals_now + FEED_RESERVE
-        if wheat > sell_wheat_min and (force_dump or prices.get("WHEAT", 25) >= 25):
+        if wheat > sell_wheat_min and (force_dump or day >= LIQUIDATE_DAY
+                                       or (prices.get("WHEAT", 25) >= 25
+                                           and prices.get("WHEAT", 25) >= SELL_FLOOR_MIN)):
             cap = MARKET_AWARE_CAPS["WHEAT"] if MARKET_AWARE_ON else 150
             sell_capped("WHEAT", wheat - sell_wheat_min, cap)
 
         for p in ("CARROT", "TOMATO"):
-            if shed.get(p, 0) > 0:
+            if shed.get(p, 0) > 0 and (force_dump or day >= LIQUIDATE_DAY
+                                       or prices.get(p, 0) >= SELL_FLOOR_MIN):
                 cap = MARKET_AWARE_CAPS.get(p, 40) if MARKET_AWARE_ON else 40
                 sell_capped(p, shed[p], cap)
 
