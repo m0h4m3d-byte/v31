@@ -22,6 +22,8 @@ RESERVE = 15
 from src.config import (
     SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY, SELL_FLOOR_MIN, LIQUIDATE_DAY,
     MILK_BULL_D12, MILK_BULL_HOLD_DAY, MILK_BAIL_FROM_DAY, MILK_BAIL_FACTOR,
+    MELON_BULL_DAY, MELON_BULL_PRICE, MELON_BULL_HOLD_DAY,
+    MELON_BAIL_FROM_DAY, MELON_BAIL_FACTOR,
     ANIMALS, SEED_COST, BASE,
     MARKET_AWARE_ON, MARKET_AWARE_CAPS,
 )
@@ -74,6 +76,8 @@ class MarketEngine:
         self.milk_bull = None
         self.milk_d12_price = None
         self.bail_fires = 0
+        self.melon_bull = None
+        self.melon_d10_price = None
         self.wool_season_max = None
         self.milk_peak = 0.0
         self.milk_crash_active = False
@@ -463,8 +467,24 @@ class MarketEngine:
             sell_capped("FERTILIZER", fert - fert_reserve, cap)
 
         melon = shed.get("MELON", 0)
+        # Melon early exit: classify once at first-harvest age; bulls hold
+        # for the peak window, bailouts release at the first -20% slide
+        # instead of riding the flush to $1. Non-bulls keep legacy day>=12.
+        # NOTE: the legacy price>=30 clause is suspended under bull hold,
+        # otherwise it bypasses the hold on day one (prices start ~270).
+        if day == MELON_BULL_DAY and self.melon_bull is None:
+            self.melon_bull = prices.get("MELON", 250) >= MELON_BULL_PRICE
+            self.melon_d10_price = prices.get("MELON", 250)
+        melon_gate = MELON_BULL_HOLD_DAY if self.melon_bull else 12
+        if (self.melon_bull and self.melon_d10_price
+                and MELON_BAIL_FROM_DAY <= day < MELON_BULL_HOLD_DAY
+                and prices.get("MELON", 250) < MELON_BAIL_FACTOR * self.melon_d10_price):
+            melon_gate = day
+            self.bail_fires += 1
+        bull_hold = bool(self.melon_bull) and day < melon_gate
         if melon > 0 and (force_dump or day >= LIQUIDATE_DAY
-                          or ((prices.get("MELON", 250) >= 30 or day >= 12)
+                          or (not bull_hold
+                              and (prices.get("MELON", 250) >= 30 or day >= melon_gate)
                               and prices.get("MELON", 250) >= SELL_FLOOR_MIN)):
             cap = MARKET_AWARE_CAPS["MELON"] if MARKET_AWARE_ON else 80
             sell_capped("MELON", melon, cap)
