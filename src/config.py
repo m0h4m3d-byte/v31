@@ -19,6 +19,11 @@ LAND_DAYS = [6, 9, 12]
 LAND_BUY_BUFFER = 300
 
 HIRE_TARGET = 12
+# Flexible hiring, one degree at a time: while poor (money below threshold),
+# skip ONLY the single priciest hire of the day (13th hand = $233 fib tail).
+# Smaller than the rejected cap-8 experiment; workforce impact minimal.
+HIRE_POOR_MONEY = 1500
+HIRE_POOR_HANDS = 12
 PASTURE_BUFFER = 2
 RESERVE = 15
 SHED_CAPACITY = 100
