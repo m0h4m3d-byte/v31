@@ -15,7 +15,7 @@ from src.config import (
     PLAN, FEED_RESERVE,
     ANIMAL_ADVISOR_ON, MILK_CRASH_PRICE, ANIMAL_ADVISOR_MIN_DAY, MILK_TREND_DROP,
     WOOL_CRASH_PRICE, WOOL_CRASH_MIN_DAY, WOOL_CRASH_DROP, WOOL_NO_YARN_CAP,
-    PASTURE_BUFFER, HIRE_TARGET,
+    PASTURE_BUFFER, HIRE_TARGET, HIRE_POOR_MONEY, HIRE_POOR_HANDS,
     RESERVE,
 )
 
@@ -151,6 +151,8 @@ class MarketEngine:
             geo_target = unlocked * 5 + (1 if unlocked == 3 else 0)
             target = min(HIRE_TARGET + 2, geo_target)  # allow 16 total (farmer+15) if needed
             target_hands = max(0, target - 1)
+            if money < HIRE_POOR_MONEY:
+                target_hands = min(target_hands, HIRE_POOR_HANDS)
             if hired < target_hands:
                 need = target_hands - hired
                 if day == 0 and hour == 0:
