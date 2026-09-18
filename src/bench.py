@@ -3,14 +3,14 @@ bench.py - Unified DeepSim benchmark (default = ladder realism).
 
 Runs the agent under BOTH regimes so no improvement can hide behind solo optimism:
 
-  solo   : vs pass (old metric, ~$95k)
-  mirror : vs itself (2-player shared market, ~$58k — ladder-like)
-  ladder : vs 4 diverse archetypes (kshitiz/aibaba/dairy/strawmax)
+   solo   : vs pass (legacy metric)
+   mirror : vs itself (2-player shared market, symmetric-flood stress bound)
+   wheat/dairy: vs honest archetype sparring bots (decision metric)
 
     python -m src.bench --seeds 12
     python -m src.bench --seeds 30 --quick   # solo only, fast
 
-The ladder bench is now the GATE for any submission: it must not regress there.
+The archetype margins are the GATE for any submission: they must not regress.
 """
 
 import argparse
@@ -42,14 +42,27 @@ def main():
     if args.quick:
         return
 
-    # 2. mirror (2-player shared market)
-    from tests.mirror_bench import run_mirror
-    run_mirror(seeds, "mirror (agent vs itself)")
+    # 2. mirror (2-player shared market, symmetric-flood stress bound)
+    from src.simulator import Simulator
+    mres = []
+    for s in seeds:
+        mres.append(Simulator(seed=s).run([Agent(), Agent()])["money"][0])
+    print(f"\n[mirror vs self] mean ${sum(mres)/len(mres):,.0f}  "
+          f"best ${max(mres):,.0f} worst ${min(mres):,.0f}")
 
-    # 3. ladder bench (diverse archetypes)
-    from tests.ladder_bench import run_bench
-    print()
-    run_bench(seeds)
+    # 3. archetype sparring (diverse honest opponents, decision metric)
+    from src.archetypes import WheatBot, DairyBot
+    for name, factory in (("wheat", WheatBot), ("dairy", DairyBot)):
+        solo, margin = [], []
+        for s in seeds:
+            r1 = Simulator(seed=s).run([factory(), "pass"])
+            r2 = Simulator(seed=s).run([Agent(), factory()])
+            solo.append(r1["money"][0])
+            margin.append(r2["money"][0] - r2["money"][1])
+        tag = "HONEST" if sum(solo) / len(solo) > 12000 else "WEAK-PROBE?"
+        print(f"\n[{name}] solo ${sum(solo)/len(solo):,.0f} [{tag}] | "
+              f"our margin ${sum(margin)/len(margin):+,.0f} "
+              f"wins={sum(1 for m in margin if m > 0)}/{len(margin)}")
 
 
 if __name__ == "__main__":

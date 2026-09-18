@@ -19,7 +19,6 @@ LAND_DAYS = [6, 9, 12]
 LAND_BUY_BUFFER = 300
 
 HIRE_TARGET = 12
-HIRE_RAMP = 4
 PASTURE_BUFFER = 2
 RESERVE = 15
 SHED_CAPACITY = 100
@@ -73,10 +72,8 @@ ANIMALS = {
     "GOOSE": {"cost": 300, "struct": "COOP", "product": "EGG"},
 }
 SEED_COST = {"WHEAT": 10, "CARROT": 20, "TOMATO": 50, "STRAWBERRY": 100, "MELON": 80}
-BASE = {"WHEAT": 25, "CARROT": 35, "TOMATO": 60, "STRAWBERRY": 120, "MELON": 250, "EGG": 50, "MILK": 160, "WOOL": 200, "FERTILIZER": 100}
 
 FEED_RESERVE = 4
-FERT_RESERVE = 0
 
 # AnimalAdvisor — was KAGG_ANIMAL_ADVISOR=1 default ON
 ANIMAL_ADVISOR_ON = True
@@ -117,75 +114,20 @@ CROP_CONFIG = {
 # Planner / strategy — day gates (were in src/strategy.py)
 # ============================================================
 # Day gates ported verbatim from main.py baseline
-WHEAT_LAST_DAY = 28
 MELON_LAST_DAY = 13
-STRAWBERRY_START_DAY = 8
 STRAWBERRY_LAST_DAY = 22
-MELON_DAY0_CAP = 12
-MELON_REGULAR_CAP = 6
-ANIMAL_LAST_BUY_DAY = 24
-MELON_SELL_DAY = 12
-STRAWBERRY_SELL_DAY = 20
-MILK_SELL_DAY = 8
-WOOL_SELL_DAY = 6
-EGG_SELL_DAY = 16
 LIQUIDATE_DAY = 27
 
 PLANT_TARGET_FULL = 60
 PLANT_TARGET_LATE = 30
-PLANT_TARGET_SWITCH_DAY = 22
 LAST_PLAYABLE_DAY = 29
 STRAW_LEAD_THRESHOLD = 190
 ADVISOR_MIN_DAY = 12
-P4_SHEEP_FLOOR = 8
-P4_RESUME_DAY = 10
 WEED_PRIORITY_THRESHOLD = 15
 WEED_PRIORITY_PRIO = 1
 
 # CropAdvisor — was KAGG_CROP_ADVISOR=1 default ON
 CROP_ADVISOR_ON = True
-
-# ============================================================
-# Experimental toggles — FROZEN to effective values
-# (were KAGG_* env vars; now plain constants, no environ read)
-# ============================================================
-# Fertilizer working-stock buyer — was KAGG_FERT_BUY_V1, default OFF
-FERT_BUY_ENGINE_V1 = False
-FERT_STOCK_TARGET = 8
-FERT_BUY_CAP_PER_DAY = 6
-FERT_BUY_LAST_DAY = 26
-FERT_BUY_MIN_MONEY = 800
-FERT_BUY_MAX_PRICE = 130
-
-# Batch-3 P5 wool tranche — was KAGG_P5_RELEASE_V1, default OFF
-P5_RELEASE_V1 = False
-P5_WOOL_KEPT_UNITS = 25
-P5_WOOL_BAIL_FROM_DAY = 16
-P5_WOOL_BAIL_FACTOR = 0.75
-
-# Batch-4 P4 sheep cap V1 — was KAGG_P4_SHEEP_CAP_V1, default OFF
-P4_SHEEP_CAP_V1 = False
-P4_NO_YARN_SHEEP_TARGET = 4
-
-# Batch-5 P4-v2 family — were KAGG_P4_SHEEP_CAP_V2 / KAGG_P4_V2B / KAGG_P4_V2A
-# Effective: V2A=ON (floor 8, no resume), V2=OFF, V2B=OFF
-P4_SHEEP_CAP_V2 = False
-P4_SHEEP_CAP_V2B = False
-P4_SHEEP_CAP_V2A = True
-P4V2_FLOOR = 8
-P4V2_RESUME_DAY = 10
-
-# Batch-6 P4-v3 price-adaptive — was KAGG_P4_V3_ADAPTIVE, default OFF
-P4_V3_ADAPTIVE = False
-P4V3_QUIET_WINDOW0 = 10
-P4V3_QUIET_WINDOW1 = 14
-P4V3_WOOL_THRESHOLD = 60
-
-# Batch-7 P7 wool sell timing — was KAGG_P7_SELL_V1, default OFF
-P7_RELEASE_V1 = False
-P7_WOOL_HOLD_DAY = 22
-P7_WOOL_EARLY_DAY = 0  # == SELL_HOLD_DAY["WOOL"]
-P7_WOOL_SELL_CAP = 80
 
 # ============================================================
 # Planting windows / animal timing — single source of truth
@@ -200,20 +142,8 @@ CROP_MAX_PLANT_DAY = {
     "MELON": 19,       # first_yield=10
 }
 
-# Per-animal last viable buy day (day + first_yield <= 29).
-# NOTE: distinct from ANIMAL_LAST_BUY_DAY=24 (legacy global gate).
-ANIMAL_LAST_BUY_DAY_BY_TYPE = {
-    "GOOSE": 25,       # first_yield=4, 25+4=29
-    "SHEEP": 23,       # first_yield=6, 23+6=29
-    "COW": 21,         # first_yield=8, 21+8=29
-}
-
-# Optimal sell days for animal products (mirror MILK/WOOL/EGG_SELL_DAY).
-ANIMAL_PRODUCT_SCHEDULE = {
-    "MILK": 8,
-    "WOOL": 6,
-    "EGG": 16,
-}
+# (Dead timing tables removed: per-animal buy days and product schedules
+# from the deleted Solution C were never wired to any decision.)
 # Linked crop order (ROI gate): ONE ranking drives both seed buying
 # (economy) and planting (planner). CTE joins only by CLEARLY beating the
 # staple (margin filters noise-level edges like d0 CARROT 27 vs WHEAT 26;

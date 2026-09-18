@@ -12,13 +12,13 @@ from typing import Dict, List
 # All tunables imported from single source of truth — src/config.py is the ONLY
 # place that holds numbers. No os.environ / KAGG_* reads exist anywhere.
 from src.config import (
-    PLAN, FEED_RESERVE, FERT_RESERVE,
+    PLAN, FEED_RESERVE,
     ANIMAL_ADVISOR_ON, MILK_CRASH_PRICE, ANIMAL_ADVISOR_MIN_DAY, MILK_TREND_DROP,
     WOOL_CRASH_PRICE, WOOL_CRASH_MIN_DAY, WOOL_CRASH_DROP, WOOL_NO_YARN_CAP,
-    PASTURE_BUFFER, HIRE_TARGET, HIRE_RAMP,
+    PASTURE_BUFFER, HIRE_TARGET,
+    RESERVE,
 )
 
-RESERVE = 15
 from src.config import (
     SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY, SELL_FLOOR_MIN, LIQUIDATE_DAY,
     MILK_BULL_D12, MILK_BULL_HOLD_DAY, MILK_BAIL_FROM_DAY, MILK_BAIL_FACTOR,
@@ -26,18 +26,11 @@ from src.config import (
     MELON_BAIL_FROM_DAY, MELON_BAIL_FACTOR,
     STRAW_BULL_DAY, STRAW_BULL_PRICE, STRAW_BULL_HOLD_DAY,
     STRAW_BAIL_FROM_DAY, STRAW_BAIL_FACTOR,
-    ANIMALS, SEED_COST, BASE,
+    ANIMALS, SEED_COST,
     MARKET_AWARE_ON, MARKET_AWARE_CAPS,
 )
 
 from src.config import (
-    FERT_BUY_ENGINE_V1, FERT_STOCK_TARGET, FERT_BUY_CAP_PER_DAY,
-    FERT_BUY_LAST_DAY, FERT_BUY_MIN_MONEY, FERT_BUY_MAX_PRICE,
-    P5_RELEASE_V1, P5_WOOL_KEPT_UNITS, P5_WOOL_BAIL_FROM_DAY, P5_WOOL_BAIL_FACTOR,
-    P4_SHEEP_CAP_V1, P4_NO_YARN_SHEEP_TARGET,
-    P4_SHEEP_CAP_V2, P4_SHEEP_CAP_V2B, P4_SHEEP_CAP_V2A, P4V2_FLOOR, P4V2_RESUME_DAY,
-    P4_V3_ADAPTIVE, P4V3_QUIET_WINDOW0, P4V3_QUIET_WINDOW1, P4V3_WOOL_THRESHOLD,
-    P7_RELEASE_V1, P7_WOOL_HOLD_DAY, P7_WOOL_EARLY_DAY, P7_WOOL_SELL_CAP,
     LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER,
     CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY, CARROT_OPP_CAP,
     TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY, TOMATO_OPP_CAP,
@@ -229,39 +222,10 @@ class MarketEngine:
         _ANIMAL_LAST_DAY = {"GOOSE": 25, "SHEEP": 23, "COW": 21}
         if day <= 25:  # max cutoff
             day0_n = {"SHEEP": 2, "COW": 3}
-            # BATCH-4/5 (P4 family): YARN-gated sheep-cap arms. Day-0-2
-            # waves (exactly 4 sheep) precede the first shop draw, so
-            # gating only from d3 keeps every world identical until
-            # information exists. Arms (mutually exclusive, precedence
-            # order as coded - see constants block):
-            #   V2  master : floor 8 until d9, full resume from d10
-            #   V2A        : floor 8, never self-resumes
-            #   V2B        : floor 4 until d9, full resume from d10
-            #   V1         : floor 4, never self-resumes (batch-4 arm)
-            # Any YARN_STORE sighting snaps the target back to PLAN.
+            # Sheep target is the plan, full stop. (The retired P4 family of
+            # YARN-gated cap arms evaluated to a no-op here: min(PLAN 5,
+            # floor 8) == PLAN, all other arms OFF. Removed, not disabled.)
             sheep_target = PLAN["SHEEP"]
-            _cap_floor, _cap_resume = None, None
-            if P4_SHEEP_CAP_V2:
-                _cap_floor, _cap_resume = P4V2_FLOOR, P4V2_RESUME_DAY
-            elif P4_SHEEP_CAP_V2A:
-                _cap_floor = P4V2_FLOOR
-            elif P4_SHEEP_CAP_V2B:
-                _cap_floor, _cap_resume = (P4_NO_YARN_SHEEP_TARGET,
-                                           P4V2_RESUME_DAY)
-            elif P4_V3_ADAPTIVE:
-                # price-adaptive floor: 8 normally, 4 on a d10-d14 dip
-                _cap_floor = P4V2_FLOOR
-                if (P4V3_QUIET_WINDOW0 <= day <= P4V3_QUIET_WINDOW1
-                        and prices.get("WOOL", 200) < P4V3_WOOL_THRESHOLD):
-                    _cap_floor = P4_NO_YARN_SHEEP_TARGET
-            elif P4_SHEEP_CAP_V1:
-                _cap_floor = P4_NO_YARN_SHEEP_TARGET
-            if (_cap_floor is not None
-                    and unlocked_shops is not None
-                    and day >= 3
-                    and "YARN_STORE" not in unlocked_shops
-                    and (_cap_resume is None or day < _cap_resume)):
-                sheep_target = min(sheep_target, _cap_floor)
             # Phase 15 (v17 ladder autopsies): milk-crash worlds killed the
             # cow-heavy build. ep 99812812: P(MILK) $185 -> $1 while wool held
             # $240; we kept pouring $400/cow into a dead market. When the
@@ -354,23 +318,8 @@ class MarketEngine:
                                ["BUY_ANIMAL", "GOOSE", _n], units=_n, floor=0):
                             self.animals_ordered["GOOSE"] = self.animals_ordered.get("GOOSE", 0) + _n
 
-        # BATCH-2 (P1) ENGINE #2: refill the fertilizer working stock.
-        # Deliberately LAST: expansion capital (land/seeds/animals) has
-        # first claim; this only spends flush cash. One multi-unit order
-        # per turn at most; the day gate stops purchases that cannot pay
-        # back before the season ends.
-        if FERT_BUY_ENGINE_V1 and day <= FERT_BUY_LAST_DAY:
-            have_fert = shed.get("FERTILIZER", 0)
-            want = FERT_STOCK_TARGET - have_fert
-            price_ok = prices.get("FERTILIZER", 100) <= FERT_BUY_MAX_PRICE
-            if want > 0 and price_ok:
-                q = min(want, FERT_BUY_CAP_PER_DAY)
-                cost = q * BASE["FERTILIZER"]
-                # floor guarantees POST-purchase cash stays >= the reserve,
-                # so tomorrow's seed/land/animal buys are never crowded out.
-                buy("fert_stock", FERT_BUY_CAP_PER_DAY, cost,
-                    ["BUY_PRODUCT", "FERTILIZER", q], units=q,
-                    floor=FERT_BUY_MIN_MONEY)
+        # (Retired fertilizer working-stock buyer removed: OFF since
+        # inception; expansion capital keeps first claim unconditionally.)
 
         return orders
 
@@ -413,39 +362,11 @@ class MarketEngine:
             w = prices["WOOL"]
             if self.wool_season_max is None or w > self.wool_season_max:
                 self.wool_season_max = w
-        wool_keep = 0
-        yarn_present = (unlocked_shops is not None
-                        and "YARN_STORE" in unlocked_shops)
-        # BATCH-7 (P7): price-adaptive wool SELL timing. ON replaces the
-        # P5/default wool hold+gate with a simple YARN-regime timing:
-        #   - YARN present -> hold ALL wool until d22, full tranche dump.
-        #   - YARN absent  -> early liquidation at V2A's d6 gate.
-        # OFF leaves the P5 / default path untouched -> bit-identical GB.
-        if P7_RELEASE_V1:
-            wool_keep = 0
-            if yarn_present:
-                wool_gate = P7_WOOL_HOLD_DAY
-            else:
-                wool_gate = P7_WOOL_EARLY_DAY
-        elif P5_RELEASE_V1 and yarn_present:
-            # Rising regime (drain lifts wool 206 -> ~243): hold a SMALL
-            # tranche back for the climb but flow everything above it, so
-            # the 100-slot shed never crowds out strawberry (the full-hold
-            # probe variant cost -$2.9k on seed 3 via shed collisions).
-            # Bail: a >=25% slide off the season max releases the tranche
-            # immediately (late-crash insurance, MILK_BAIL analog).
-            wool_keep = P5_WOOL_KEPT_UNITS
-            wool_gate = SELL_HOLD_DAY["WOOL"]
-            if (day >= P5_WOOL_BAIL_FROM_DAY and self.wool_season_max
-                    and prices.get("WOOL", 200)
-                    < P5_WOOL_BAIL_FACTOR * self.wool_season_max):
-                wool_keep = 0
-                self.bail_fires += 1
+        # (Retired P5/P7 wool-timing arms removed: both OFF since inception,
+        # default path kept verbatim.)
         for p, gate in (("MILK", milk_gate), ("WOOL", wool_gate),
                         ("EGG", SELL_HOLD_DAY["EGG"])):
             amt = shed.get(p, 0)
-            if p == "WOOL" and not force_dump:
-                amt -= wool_keep
             # Floor guard: below SELL_FLOOR_MIN, hold for recovery unless
             # overflow forces it out or season liquidation demands it.
             if amt > 0 and (force_dump or day >= LIQUIDATE_DAY
@@ -462,10 +383,9 @@ class MarketEngine:
         # at ~$50 avg = their single biggest revenue line). Locally the
         # price rarely drops below 40, so this is behavior-neutral in the
         # starter benchmark (shed stays ~2 units either way).
-        if FERT_BUY_ENGINE_V1:
-            fert_reserve = FERT_STOCK_TARGET
-        else:
-            fert_reserve = 2
+        # Fertilizer reserve is a plain 2 (the retired stock-buyer path that
+        # raised it is gone).
+        fert_reserve = 2
         if fert > fert_reserve:
             cap = MARKET_AWARE_CAPS["FERTILIZER"] if MARKET_AWARE_ON else 80
             sell_capped("FERTILIZER", fert - fert_reserve, cap)
