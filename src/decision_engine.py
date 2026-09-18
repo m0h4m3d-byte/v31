@@ -3,14 +3,14 @@ decision_engine.py - Evaluates candidate decisions with the market model.
 
 Components:
     SellAdvisor   - sell-now vs hold, per product, using price projection
+                    (live: main.py Solution A vets SELL orders through it)
     CropAdvisor   - ranks crops by projected ROI for the current day
-    AdaptiveAgent - wraps the production agent and replaces its SELL orders
-                    with market-model-optimal ones (experiment vehicle;
-                    production src/ is never modified)
+    linked_crop_order - ONE shared planting order for seed buying
+                    (economy) and planting (planner), margin-gated CTE
 
 Usage:
-    from src.decision_engine import AdaptiveAgent
-    stats = evaluate(AdaptiveAgent, range(30), opponent="pass")
+    from src.decision_engine import linked_crop_order
+    order = linked_crop_order(day, market_ctx)
 """
 
 from src.market_model import MarketModel, TownDemand
@@ -210,95 +210,8 @@ class DecisionEngine:
         }
 
 
-class AdaptiveAgent:
-    """Wraps any agent callable.
-
-    mode="replace": swaps its SELL orders for model-optimal ones.
-    mode="veto"   : keeps ALL original orders; only suppresses a product's
-                    sell when the model says HOLD *and* the shed has plenty
-                    of headroom (never risks overflow discards).
-    """
-
-    SHED_SAFE_LIMIT = 55   # total sellable units below which holding is safe
-    # Crash-prone premium goods: the production agent's tuned bull/bail
-    # gates already handle these better than our naive drain projection.
-    VETO_BLACKLIST = {"MILK", "MELON", "STRAWBERRY"}
-
-    def __init__(self, inner_factory=None, engine=None, mode="veto"):
-        from main import Agent as ProdAgent
-        self._inner_factory = inner_factory or ProdAgent
-        self.engine = engine or DecisionEngine()
-        self.mode = mode
-        self._hold_baseline = {}   # item -> price when we first started holding
-
-    def __call__(self, obs):
-        inner_agent = getattr(self, "_inner", None)
-        if inner_agent is None or obs.get("step", 0) == 0:
-            self._inner = self._inner_factory()
-            inner_agent = self._inner
-            self._hold_baseline = {}
-        action = inner_agent(obs)
-        if self.mode == "replace":
-            return self._rewrite_sells(action, obs)
-        return self._veto_sells(action, obs)
-
-    def _veto_sells(self, action, obs):
-        try:
-            plan = self.engine.sell.advise(obs)
-        except Exception:
-            return action
-        shed = obs["private"]["shed"]
-        sellable = ("MILK", "WOOL", "EGG", "FERTILIZER", "MELON",
-                    "STRAWBERRY", "WHEAT", "CARROT", "TOMATO")
-        shed_load = sum(shed.get(p, 0) for p in sellable)
-        if shed_load > self.SHED_SAFE_LIMIT:
-            return action  # overflow risk: never hold
-        prices = obs["market"]["prices"]
-        market = [list(o) for o in (action.get("market") or [])]
-        kept = []
-        for o in market:
-            if o and o[0] == "SELL" and plan.get(o[1], ("SELL",))[0] == "HOLD":
-                item = o[1]
-                if item in self.VETO_BLACKLIST:
-                    kept.append(o)
-                    continue
-                # Bail: if the live price slid >=10% since we began holding,
-                # our drain projection was wrong -> release the veto.
-                base = self._hold_baseline.setdefault(item, prices.get(item, 0))
-                if prices.get(item, 0) < 0.90 * base:
-                    self._hold_baseline[item] = prices.get(item, 0)
-                    kept.append(o)
-                    continue
-                kept.append(None)  # vetoed
-            else:
-                kept.append(o)
-        final = [o for o in kept if o is not None]
-        if len(final) == len(market):
-            return action
-        action = dict(action)
-        action["market"] = final[:10]
-        return action
-
-    def _rewrite_sells(self, action, obs):
-        try:
-            plan = self.engine.sell.advise(obs)
-        except Exception:
-            return action
-        market = [list(o) for o in (action.get("market") or [])]
-        kept = []
-        for o in market:
-            # Keep non-SELL orders and SELLs for items the model doesn't manage.
-            if o and o[0] == "SELL" and o[1] in plan:
-                continue
-            kept.append(o)
-        shed = obs["private"]["shed"]
-        for item, (verdict, n) in plan.items():
-            available = min(n, shed.get(item, 0))
-            if verdict == "SELL" and available > 0:
-                kept.append(["SELL", item, available])
-        action = dict(action)
-        action["market"] = kept[:10]
-        return action
+# (Retired AdaptiveAgent experiment vehicle removed: never wired into the
+# production path; the position it tested is covered by Solution A.)
 
 
 if __name__ == "__main__":
