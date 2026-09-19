@@ -20,7 +20,8 @@ from src.economy import MarketEngine
 from src.planner import FarmPlanner
 from src.decision_engine import SellAdvisor
 from src.constants import CROP_CONFIG
-from src.config import LAST_PLAYABLE_DAY, CROP_MAX_PLANT_DAY
+from src.config import LAST_PLAYABLE_DAY, CROP_MAX_PLANT_DAY, PLAN
+from src.portfolio import adapt_herd, shops_signature
 
 
 class Agent:
@@ -55,6 +56,8 @@ class Agent:
     def reset(self):
         self.day = 0
         self.hour = 0
+        self._plan = None
+        self._shop_sig = None
         self.market = MarketEngine(plan=self._plan)
         self.planner = FarmPlanner(plan=self._plan)
 
@@ -89,6 +92,18 @@ class Agent:
         day = obs.get("day", 0)
         self.day = day
         self.hour = obs.get("hour", 0)
+        # Adaptive herd: re-split the pasture budget only when the shop
+        # SET changes (unlock days). Days 0-2 and shop-less worlds keep the
+        # frozen plan; targets gate future buys, nothing is force-sold.
+        _shops = list((obs.get("town") or {}).get("unlocked_shops") or [])
+        _sig = shops_signature(_shops)
+        if _sig != self._shop_sig:
+            self._shop_sig = _sig
+            if self._plan is None:
+                self._plan = dict(PLAN)
+            self._plan.update(adapt_herd(day, _shops, self._plan))
+            self.market.plan.update(self._plan)
+            self.planner.plan.update(self._plan)
         player = obs["player"]
         me = obs["farms"][player]
         private = obs["private"]
