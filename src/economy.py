@@ -21,6 +21,8 @@ from src.config import (
 
 from src.config import (
     SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY, SELL_FLOOR_MIN, LIQUIDATE_DAY,
+    FORCE_SLIDE_DROP, FORCE_PEAK_FLOOR,
+    MELON_FLOOR_MIN,
     MILK_BULL_D12, MILK_BULL_HOLD_DAY, MILK_BAIL_FROM_DAY, MILK_BAIL_FACTOR,
     MELON_PANIC_DROP,
     STRAW_BULL_DAY, STRAW_BULL_PRICE, STRAW_BULL_HOLD_DAY,
@@ -71,6 +73,7 @@ class MarketEngine:
         self.milk_d12_price = None
         self.bail_fires = 0
         self.melon_peak = 0.0
+        self.force_peak = {}
         self.straw_bull = None
         self.straw_d12_price = None
         self.wool_season_max = None
@@ -110,13 +113,15 @@ class MarketEngine:
         return total
 
     def build_orders(self, day: int, hour: int, me, shed, seeds, prices, money, invs,
-                     unlocked_shops=None, market_inventory=None) -> List[list]:
+                     unlocked_shops=None, market_inventory=None, incoming=0) -> List[list]:
         """Return the market orders list. Mirrors Agent._market_orders exactly.
 
         unlocked_shops: obs.town.unlocked_shops (P5 signal); None/absent on
         the OFF path so behaviour stays bit-identical to GOLDEN_BASELINE.
         market_inventory: shared market supply; enables the linked ROI crop
         order (None => legacy behavior, no CTE seeds).
+        incoming: unharvested field yield + carried inventories (units about
+        to enter the shed); gates the overflow force-dump with free room.
         """
         self._on_day(day)
         orders = []
@@ -140,7 +145,7 @@ class MarketEngine:
             return True
 
         self._sell(orders, shed, prices, day, animals_now,
-                   unlocked_shops=unlocked_shops)
+                   unlocked_shops=unlocked_shops, incoming=incoming)
 
         if day < 30:
             hired = me.get("hires_today", 0)
@@ -312,21 +317,39 @@ class MarketEngine:
 
         return orders
 
-    def _sell(self, orders, shed, prices, day, animals_now, unlocked_shops=None):
+    def _sell(self, orders, shed, prices, day, animals_now, unlocked_shops=None,
+              incoming=0):
         sold = self.sold_today
 
         def sell_capped(item, amount, cap):
+            # Overflow drain is samples, not floods: 5 units per product per
+            # day (day-27 liquidation keeps full caps to empty everything).
+            if force_dump and day < LIQUIDATE_DAY:
+                cap = min(cap, 5)
             amount = min(amount, cap - sold.get(item, 0))
             if amount > 0 and len(orders) < 10:
                 sold[item] = sold.get(item, 0) + amount
                 orders.append(["SELL", item, amount])
 
-        # Phase 3: overflow guard - sellable inventory at 80% of shed
-        # capacity means end-of-day overflow discards are imminent; force
-        # everything out (capacity trumps hold windows and feed reserves).
+        # Phase 3: overflow guard with TWO joint conditions (both must hold):
+        # (1) shed near-full AND some premium sliding 25%+ off its peak,
+        # (2) incoming harvest exceeds free room. Healthy-full sheds drain at
+        # normal caps; crashed-full sheds with nothing incoming wait instead
+        # of dumping into the crash (discards risk accepted over fire-sale).
         sellable = ("MILK", "WOOL", "EGG", "FERTILIZER", "MELON",
                     "STRAWBERRY", "WHEAT", "CARROT", "TOMATO")
-        force_dump = sum(shed.get(p, 0) for p in sellable) >= SHED_DUMP_AT
+        shed_load = sum(shed.get(p, 0) for p in sellable)
+        for _fp in ("MILK", "WOOL", "MELON", "STRAWBERRY"):
+            _fv = prices.get(_fp)
+            if _fv is not None and _fv > self.force_peak.get(_fp, 0):
+                self.force_peak[_fp] = float(_fv)
+        prices_low = any(
+            self.force_peak.get(_fp, 0) >= FORCE_PEAK_FLOOR
+            and prices.get(_fp, 0) < (1.0 - FORCE_SLIDE_DROP) * self.force_peak[_fp]
+            for _fp in ("MILK", "WOOL", "MELON", "STRAWBERRY")
+        )
+        force_dump = (shed_load >= SHED_DUMP_AT and prices_low
+                      and incoming > SHED_CAPACITY - shed_load)
 
         # Phase 10: adaptive milk hold - classify the market once on d12
         # (prices are constant per day, so the hour-0 snapshot is exact).
@@ -357,8 +380,9 @@ class MarketEngine:
                         ("EGG", SELL_HOLD_DAY["EGG"])):
             amt = shed.get(p, 0)
             # Floor guard: below SELL_FLOOR_MIN, hold for recovery unless
-            # overflow forces it out or season liquidation demands it.
-            if amt > 0 and (force_dump or day >= LIQUIDATE_DAY
+            # overflow forces it out. (Day>=27 liquidation below sells
+            # everything separately, so no liquidation clause here.)
+            if amt > 0 and (force_dump
                             or (day >= gate and prices.get(p, 0) >= SELL_FLOOR_MIN)):
                 cap = MARKET_AWARE_CAPS.get(p, 80) if MARKET_AWARE_ON else 80
                 sell_capped(p, amt, cap)
@@ -381,10 +405,9 @@ class MarketEngine:
 
         melon = shed.get("MELON", 0)
         # Melon: sell first flushes IMMEDIATELY at healthy prices (legacy
-        # tranches, no waiting for peaks). If price slides 20% off the
-        # running peak, PANIC-dump the whole shed at once (cap 999) before
-        # the flush rides to $1. Ladder opponents skim peaks early; waiting
-        # leaves us the floor.
+        # tranches, no waiting for peaks). PANIC permission covers the gaps
+        # legacy misses: days 10-11 and sub-30 slides, always at tranche pace
+        # (never floods) and never below the 30 floor (never at a loss).
         _mp = prices.get("MELON", 250)
         if _mp > self.melon_peak:
             self.melon_peak = float(_mp)
@@ -392,11 +415,11 @@ class MarketEngine:
                        and _mp < (1.0 - MELON_PANIC_DROP) * self.melon_peak)
         if melon_panic:
             self.bail_fires += 1
-        if melon > 0 and (force_dump or day >= LIQUIDATE_DAY
-                          or (melon_panic and _mp >= SELL_FLOOR_MIN)
+        if melon > 0 and (force_dump
+                          or (melon_panic and _mp >= MELON_FLOOR_MIN)
                           or ((prices.get("MELON", 250) >= 30 or day >= 12)
-                              and prices.get("MELON", 250) >= SELL_FLOOR_MIN)):
-            cap = 999 if melon_panic else (MARKET_AWARE_CAPS["MELON"] if MARKET_AWARE_ON else 80)
+                              and prices.get("MELON", 250) >= MELON_FLOOR_MIN)):
+            cap = MARKET_AWARE_CAPS["MELON"] if MARKET_AWARE_ON else 80
             sell_capped("MELON", melon, cap)
 
         strawberry = shed.get("STRAWBERRY", 0)
@@ -415,7 +438,7 @@ class MarketEngine:
             straw_gate = day
             self.bail_fires += 1
         straw_hold = bool(self.straw_bull) and day < straw_gate
-        if strawberry > 0 and (force_dump or day >= LIQUIDATE_DAY
+        if strawberry > 0 and (force_dump
                                or (not straw_hold
                                    and (prices.get("STRAWBERRY", 120) >= 30
                                         or day >= max(straw_gate, SELL_HOLD_DAY["STRAWBERRY"]))
@@ -425,14 +448,14 @@ class MarketEngine:
 
         wheat = shed.get("WHEAT", 0)
         sell_wheat_min = 0 if force_dump else animals_now + FEED_RESERVE
-        if wheat > sell_wheat_min and (force_dump or day >= LIQUIDATE_DAY
+        if wheat > sell_wheat_min and (force_dump
                                        or (prices.get("WHEAT", 25) >= 25
                                            and prices.get("WHEAT", 25) >= SELL_FLOOR_MIN)):
             cap = MARKET_AWARE_CAPS["WHEAT"] if MARKET_AWARE_ON else 150
             sell_capped("WHEAT", wheat - sell_wheat_min, cap)
 
         for p in ("CARROT", "TOMATO"):
-            if shed.get(p, 0) > 0 and (force_dump or day >= LIQUIDATE_DAY
+            if shed.get(p, 0) > 0 and (force_dump
                                        or prices.get(p, 0) >= SELL_FLOOR_MIN):
                 cap = MARKET_AWARE_CAPS.get(p, 40) if MARKET_AWARE_ON else 40
                 sell_capped(p, shed[p], cap)
