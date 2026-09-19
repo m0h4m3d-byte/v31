@@ -22,8 +22,7 @@ from src.config import (
 from src.config import (
     SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY, SELL_FLOOR_MIN, LIQUIDATE_DAY,
     MILK_BULL_D12, MILK_BULL_HOLD_DAY, MILK_BAIL_FROM_DAY, MILK_BAIL_FACTOR,
-    MELON_BULL_DAY, MELON_BULL_PRICE, MELON_BULL_HOLD_DAY,
-    MELON_BAIL_FROM_DAY, MELON_BAIL_FACTOR,
+    MELON_PANIC_DROP,
     STRAW_BULL_DAY, STRAW_BULL_PRICE, STRAW_BULL_HOLD_DAY,
     STRAW_BAIL_FROM_DAY, STRAW_BAIL_FACTOR,
     ANIMALS, SEED_COST,
@@ -34,7 +33,7 @@ from src.config import (
     LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER,
     CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY, CARROT_OPP_CAP,
     TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY, TOMATO_OPP_CAP,
-    CROP_LINK_ON, GOOSE_OPP_CAP,
+    CROP_LINK_ON,
 )
 
 
@@ -71,8 +70,7 @@ class MarketEngine:
         self.milk_bull = None
         self.milk_d12_price = None
         self.bail_fires = 0
-        self.melon_bull = None
-        self.melon_d10_price = None
+        self.melon_peak = 0.0
         self.straw_bull = None
         self.straw_d12_price = None
         self.wool_season_max = None
@@ -308,17 +306,6 @@ class MarketEngine:
                 cost = ANIMALS[animal]["cost"]
                 if n > 0 and buy("animal_" + animal, n, n * cost, ["BUY_ANIMAL", animal, n], units=n, floor=0):
                     self.animals_ordered[animal] = self.animals_ordered.get(animal, 0) + n
-            # Opportunistic GOOSE trial (kept separate: shop-gated, not ROI).
-            _egg_shops = list(unlocked_shops or [])
-            if _egg_shops and day >= 3 and ("BAKERY" in _egg_shops or "BRUNCH_SPOT" in _egg_shops):
-                _have_g = geese + self._unplaced_animal(invs, shed, "GOOSE")
-                _missing_g = GOOSE_OPP_CAP - _have_g
-                if _missing_g > 0 and day <= _ANIMAL_LAST_DAY.get("GOOSE", 24):
-                    _n = min(_missing_g, 1)
-                    if self._unplaced_animal(invs, shed, "GOOSE") < 10:
-                        if buy("animal_GOOSE", _n, _n * ANIMALS["GOOSE"]["cost"],
-                               ["BUY_ANIMAL", "GOOSE", _n], units=_n, floor=0):
-                            self.animals_ordered["GOOSE"] = self.animals_ordered.get("GOOSE", 0) + _n
 
         # (Retired fertilizer working-stock buyer removed: OFF since
         # inception; expansion capital keeps first claim unconditionally.)
@@ -393,26 +380,23 @@ class MarketEngine:
             sell_capped("FERTILIZER", fert - fert_reserve, cap)
 
         melon = shed.get("MELON", 0)
-        # Melon early exit: classify once at first-harvest age; bulls hold
-        # for the peak window, bailouts release at the first -20% slide
-        # instead of riding the flush to $1. Non-bulls keep legacy day>=12.
-        # NOTE: the legacy price>=30 clause is suspended under bull hold,
-        # otherwise it bypasses the hold on day one (prices start ~270).
-        if day == MELON_BULL_DAY and self.melon_bull is None:
-            self.melon_bull = prices.get("MELON", 250) >= MELON_BULL_PRICE
-            self.melon_d10_price = prices.get("MELON", 250)
-        melon_gate = MELON_BULL_HOLD_DAY if self.melon_bull else 12
-        if (self.melon_bull and self.melon_d10_price
-                and MELON_BAIL_FROM_DAY <= day < MELON_BULL_HOLD_DAY
-                and prices.get("MELON", 250) < MELON_BAIL_FACTOR * self.melon_d10_price):
-            melon_gate = day
+        # Melon: sell first flushes IMMEDIATELY at healthy prices (legacy
+        # tranches, no waiting for peaks). If price slides 20% off the
+        # running peak, PANIC-dump the whole shed at once (cap 999) before
+        # the flush rides to $1. Ladder opponents skim peaks early; waiting
+        # leaves us the floor.
+        _mp = prices.get("MELON", 250)
+        if _mp > self.melon_peak:
+            self.melon_peak = float(_mp)
+        melon_panic = (day >= 10 and self.melon_peak >= 100
+                       and _mp < (1.0 - MELON_PANIC_DROP) * self.melon_peak)
+        if melon_panic:
             self.bail_fires += 1
-        bull_hold = bool(self.melon_bull) and day < melon_gate
         if melon > 0 and (force_dump or day >= LIQUIDATE_DAY
-                          or (not bull_hold
-                              and (prices.get("MELON", 250) >= 30 or day >= melon_gate)
+                          or (melon_panic and _mp >= SELL_FLOOR_MIN)
+                          or ((prices.get("MELON", 250) >= 30 or day >= 12)
                               and prices.get("MELON", 250) >= SELL_FLOOR_MIN)):
-            cap = MARKET_AWARE_CAPS["MELON"] if MARKET_AWARE_ON else 80
+            cap = 999 if melon_panic else (MARKET_AWARE_CAPS["MELON"] if MARKET_AWARE_ON else 80)
             sell_capped("MELON", melon, cap)
 
         strawberry = shed.get("STRAWBERRY", 0)
