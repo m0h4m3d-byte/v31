@@ -162,8 +162,12 @@ CROP_MAX_PLANT_DAY = {
 # real hinge explosions like drained CARROT 3629 pass easily).
 # CTE joins only on true hinge explosions (e.g. drained CARROT 3629);
 # noise-level edges stay out.
+# Linked ROI gate v2: admit CTE only on CLEAR wins (1.5x wheat) with TWO
+# shop waves of evidence (day>=6). v1 (2.0/day>=3) proved dormant; noise
+# needs info, real hinge explosions (100s-1000s ROI) clear 1.5x easily.
 CROP_LINK_ON = True
-CROP_LINK_MARGIN = 2.0
+CROP_LINK_MARGIN = 1.5
+CTE_START_DAY = 6
 # CTE trial caps (used only when the linked order admits them).
 CARROT_OPP_TARGET = 6
 CARROT_OPP_LAST_DAY = 24

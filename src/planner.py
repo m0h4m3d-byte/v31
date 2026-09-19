@@ -18,7 +18,7 @@ from src.config import (
     LAST_PLAYABLE_DAY,
     PASTURE_LOCATIONS,
     CARROT_OPP_LAST_DAY, TOMATO_OPP_LAST_DAY,
-    CROP_LINK_ON,
+    CROP_LINK_ON, CTE_START_DAY,
 )
 
 # --- Day gates (were src/strategy.py — logic lives here, numbers live in config.py) ---
@@ -69,9 +69,10 @@ def _advisor_crop_order(day, market_ctx):
             order.append(crop)
     if straw_active and not straw_ok:
         order.append("STRAWBERRY")  # still plant some if nothing else fits
-    if CROP_LINK_ON:
+    if CROP_LINK_ON and day >= CTE_START_DAY:
         # Narrow ROI gate: legacy core order untouched; ROI admits CTE only
         # (shared ranking with economy seed buying — one source, no reorder).
+        # Day>=CTE_START_DAY: two shop waves of evidence before diversifying.
         try:
             from src.decision_engine import linked_crop_order
             linked = linked_crop_order(day, market_ctx)

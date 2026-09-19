@@ -35,7 +35,7 @@ from src.config import (
     LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER,
     CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY, CARROT_OPP_CAP,
     TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY, TOMATO_OPP_CAP,
-    CROP_LINK_ON,
+    CROP_LINK_ON, CTE_START_DAY,
 )
 
 
@@ -199,7 +199,7 @@ class MarketEngine:
                      "STRAWBERRY": (self.plan["STRAWBERRY"], 14, 10, 3)}
         # Linked ROI gate (single source with planner): CTE seeds join ONLY
         # when the shared ranking admits them (beating wheat x margin).
-        if CROP_LINK_ON and market_inventory is not None and day >= 3:
+        if CROP_LINK_ON and market_inventory is not None and day >= CTE_START_DAY:
             try:
                 from src.decision_engine import linked_crop_order
                 _linked = linked_crop_order(day, {
@@ -212,10 +212,10 @@ class MarketEngine:
             if _linked:
                 if "CARROT" in _linked:
                     seed_plan["CARROT"] = (CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY,
-                                           CARROT_OPP_CAP, 3)
+                                           CARROT_OPP_CAP, CTE_START_DAY)
                 if "TOMATO" in _linked:
                     seed_plan["TOMATO"] = (TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY,
-                                           TOMATO_OPP_CAP, 3)
+                                           TOMATO_OPP_CAP, CTE_START_DAY)
         for crop, (target, last_day, cap, start_day) in seed_plan.items():
             if day > last_day or day < start_day:
                 continue
