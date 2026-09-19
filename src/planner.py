@@ -150,7 +150,8 @@ class FarmPlanner:
         unit_task: per-unit in-flight task (pos + op), reset each day.
     """
 
-    def __init__(self):
+    def __init__(self, plan=None):
+        self.plan = dict(plan) if plan else dict(PLAN)
         self.reset()
 
     def reset(self):
@@ -277,7 +278,7 @@ class FarmPlanner:
                                 break
         _skip_build_day0 = (day == 0 and _hour < 12)
         if not _skip_build_day0 and not _is_final and day > 2:
-            build_target = min(PLAN["COW"] + PLAN["SHEEP"],
+            build_target = min(self.plan["COW"] + self.plan["SHEEP"],
                                sum(animals_ordered.get(k, 0) for k in ("COW", "SHEEP")) + PASTURE_BUFFER)
             total_pastures = self._count_structs(tiles, "PASTURE")
             pasture_jobs = total_pastures

@@ -47,14 +47,16 @@ class Agent:
     # Default (5%) maintains baseline parity when Solution B is active.
     SELL_THRESHOLD = 1.05
 
-    def __init__(self):
+    def __init__(self, plan=None):
+        # plan=None => frozen global PLAN (bit-identical legacy behavior).
+        self._plan = dict(plan) if plan else None
         self.reset()
 
     def reset(self):
         self.day = 0
         self.hour = 0
-        self.market = MarketEngine()
-        self.planner = FarmPlanner()
+        self.market = MarketEngine(plan=self._plan)
+        self.planner = FarmPlanner(plan=self._plan)
 
     # ------------------------------------------------------------------
     # Live views kept for introspection / regression tests.
