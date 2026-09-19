@@ -66,30 +66,12 @@ HIRE = "HIRE"
 BUY_LAND = "BUY_LAND"
 
 # ============================================================
-# Tile Kinds
-# ============================================================
-TILE_EMPTY = "EMPTY"
-TILE_LOCKED = "LOCKED"
-TILE_PLANT = "PLANT"
-TILE_WEED = "WEED"
-TILE_COOP = "COOP"
-TILE_PASTURE = "PASTURE"
-
-# ============================================================
 # Quadrants
 # ============================================================
 NW = "NW"
 NE = "NE"
 SW = "SW"
 SE = "SE"
-QUADRANTS = (NW, NE, SW, SE)
 
 # Re-export single source of truth from config.py to prevent drift.
 from src.config import CROP_CONFIG, SHED_TILES, COOP_POS  # noqa: F401
-
-DEFAULT_BOARD_SIZE = 10
-DEFAULT_TURNS_PER_DAY = 24
-DEFAULT_EPISODE_STEPS = 720
-DEFAULT_STARTING_MONEY = 3000
-DEFAULT_SHED_CAPACITY = 100
-DEFAULT_MAX_MARKET_ORDERS = 10
