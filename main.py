@@ -99,6 +99,17 @@ class Agent:
         units = [list(me["farmer"])] + [list(h) for h in me["hands"]]
         invs = private["inventories"]
 
+        # Incoming harvest pressure: unharvested field yield + carried
+        # inventories about to enter the shed (gates overflow force-dump
+        # together with free room).
+        incoming = 0
+        for _row in tiles:
+            for _t in _row:
+                if isinstance(_t, dict):
+                    incoming += _t.get("yield_units", 0) or 0
+        for _inv in invs:
+            for _v in _inv.values():
+                incoming += _v or 0
         # --- Step 1: Generate market orders ---
         # MarketEngine builds orders (seeds, animals, land, sell orders)
         # Mirrors the monolith's Agent._market_orders exactly for parity
@@ -106,6 +117,7 @@ class Agent:
             day, self.hour, me, shed, seeds, prices, money, invs,
             unlocked_shops=list((obs.get("town") or {}).get("unlocked_shops") or []),
             market_inventory=market.get("inventory", {}),
+            incoming=incoming,
         )
 
         # --- Step 1.5: Solution A - Price-projective sell decision with threshold ---

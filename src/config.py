@@ -27,13 +27,24 @@ HIRE_POOR_HANDS = 12
 PASTURE_BUFFER = 2
 RESERVE = 15
 SHED_CAPACITY = 100
-SHED_DUMP_AT = 80
+# Overflow force-dump trips at 95 (near-full): drain as 5-unit samples per
+# product (no flood) to rotate stock instead of discarding overflow.
+SHED_DUMP_AT = 95
+# Force drain fires ONLY when both hold: (1) shed full AND premium prices
+# sliding, (2) incoming harvest exceeds free room. Otherwise healthy-full
+# sheds drain at normal caps, crashed-full sheds wait for recovery.
+FORCE_SLIDE_DROP = 0.25
+FORCE_PEAK_FLOOR = 100
 
 SELL_HOLD_DAY = {"MILK": 0, "WOOL": 0, "EGG": 0, "STRAWBERRY": 0}
 # Floor guard: never SELL below this live price, except overflow force-dump
 # (shed>=SHED_DUMP_AT) or final liquidation (day>=LIQUIDATE_DAY). Selling at
 # $1-5 wastes harvest/haul labor for ~zero revenue; waiting is cheaper.
 SELL_FLOOR_MIN = 10
+# Melon floor sits ABOVE seed cost (80/6 = 13.3$/unit) with margin: below
+# 25 a melon sale cannot repay seed+labor. Other goods keep the general
+# floor (wheat seed is ~3$/unit; fertilizer must always flow).
+MELON_FLOOR_MIN = 25
 # Melon: no waiting for peaks (ladder rivals skim them early). Sell first
 # flushes immediately; PANIC-dump everything at the first 20% slide off the
 # running peak instead of riding to $1.
