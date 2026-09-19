@@ -92,18 +92,6 @@ class Agent:
         day = obs.get("day", 0)
         self.day = day
         self.hour = obs.get("hour", 0)
-        # Adaptive herd: re-split the pasture budget only when the shop
-        # SET changes (unlock days). Days 0-2 and shop-less worlds keep the
-        # frozen plan; targets gate future buys, nothing is force-sold.
-        _shops = list((obs.get("town") or {}).get("unlocked_shops") or [])
-        _sig = shops_signature(_shops)
-        if _sig != self._shop_sig:
-            self._shop_sig = _sig
-            if self._plan is None:
-                self._plan = dict(PLAN)
-            self._plan.update(adapt_herd(day, _shops, self._plan))
-            self.market.plan.update(self._plan)
-            self.planner.plan.update(self._plan)
         player = obs["player"]
         me = obs["farms"][player]
         private = obs["private"]
@@ -127,6 +115,19 @@ class Agent:
         for _inv in invs:
             for _v in _inv.values():
                 incoming += _v or 0
+        # Adaptive portfolio: re-split the pasture budget and re-rank crops
+        # only when the shop SET changes (unlock days). Days 0-2 and
+        # shop-less worlds keep the frozen plan; targets gate future buys,
+        # nothing is force-sold.
+        _shops = list((obs.get("town") or {}).get("unlocked_shops") or [])
+        _sig = shops_signature(_shops)
+        if _sig != self._shop_sig:
+            self._shop_sig = _sig
+            if self._plan is None:
+                self._plan = dict(PLAN)
+            self._plan.update(adapt_herd(day, _shops, self._plan))
+            self.market.plan.update(self._plan)
+            self.planner.plan.update(self._plan)
         # --- Step 1: Generate market orders ---
         # MarketEngine builds orders (seeds, animals, land, sell orders)
         # Mirrors the monolith's Agent._market_orders exactly for parity
