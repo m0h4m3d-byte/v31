@@ -34,14 +34,10 @@ SELL_HOLD_DAY = {"MILK": 0, "WOOL": 0, "EGG": 0, "STRAWBERRY": 0}
 # (shed>=SHED_DUMP_AT) or final liquidation (day>=LIQUIDATE_DAY). Selling at
 # $1-5 wastes harvest/haul labor for ~zero revenue; waiting is cheaper.
 SELL_FLOOR_MIN = 10
-# Melon early exit (BULL/BAIL mirror of milk): classify once when first
-# harvests land; bulls hold for the peak, bailouts dump at the first -20%
-# slide instead of riding to $1 (seed 11: 271 -> 1 in 4 days).
-MELON_BULL_DAY = 10
-MELON_BULL_PRICE = 260
-MELON_BULL_HOLD_DAY = 14
-MELON_BAIL_FROM_DAY = 12
-MELON_BAIL_FACTOR = 0.80
+# Melon: no waiting for peaks (ladder rivals skim them early). Sell first
+# flushes immediately; PANIC-dump everything at the first 20% slide off the
+# running peak instead of riding to $1.
+MELON_PANIC_DROP = 0.20
 # Strawberry early exit (BULL/BAIL template): 4 flushes on days 10/12/14/16;
 # classify at 12 on the advisor-trusted 190; bulls hold through the last
 # flush (16), bailouts release at the first -20% slide inside 13-15.
@@ -164,9 +160,5 @@ CARROT_OPP_CAP = 3
 TOMATO_OPP_TARGET = 4
 TOMATO_OPP_LAST_DAY = 21
 TOMATO_OPP_CAP = 2
-# Opportunistic GOOSE trial: max 2, ONLY when egg shops (BAKERY/BRUNCH_SPOT)
-# are visible from day 3. Else PLAN (0). (Diagnostic history: bought but
-# never placed in solo 30/30 with COOP at (0,0); kept for ladder timing.)
-GOOSE_OPP_CAP = 2
 
 
