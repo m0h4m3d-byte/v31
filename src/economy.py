@@ -178,6 +178,8 @@ class MarketEngine:
 
         # no-4th-land: stop at 3 quarters (75 tiles) — measured: the $4k SE
         # plus 25 extra tiles the crew cannot cover loses -11.5% solo.
+        # Reopen ONLY on proof of 10x ($40k return on $4k) in ladder
+        # conditions. Never an explicit option below that bar.
         unlocked = len(me.get("unlocked_quadrants", []))
         if 0 < unlocked < len(LAND_COSTS) and day >= LAND_DAYS[unlocked - 1]:
             # Liquidity gate: keep operating buffer after paying (blocks
