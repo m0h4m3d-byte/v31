@@ -270,11 +270,98 @@ class DairyBot:
         return {"farmer": field[0], "hands": field[1:], "market": market[:10]}
 
 
+class FlooderBot:
+    """Crops-only volume spammer (Yash mechanism, no husbandry): rotate
+    wheat/carrot/melon/strawberry across every tile, SELL every unit every
+    turn (no floors), 8 hands/day, land when rich.
+
+    Models the ladder flooders whose shared-market volume collapses prices
+    and strangles price-waiting agents. Honesty bar: solo >= 15k (volume at
+    rising solo prices must pay); margin vs it is the flood-response gate.
+    Test device only, never submitted."""
+
+    CROPS = ["WHEAT", "CARROT", "MELON", "STRAWBERRY"]
+    FIRST = {"WHEAT": 4, "CARROT": 3, "MELON": 10, "STRAWBERRY": 0}
+
+    def __call__(self, obs):
+        day = obs["day"]
+        me = obs["farms"][obs["player"]]
+        private = obs["private"]
+        money = me["money"]
+        tiles = _tiles_of(me)
+        shed = dict(private["shed"])
+        seeds = dict(private["seeds"])
+        invs = private["inventories"]
+        market = []
+
+        if day == 0 and money > 1500:
+            # opening stock: cheap staples bulk, premium toe-hold
+            market.append(["BUY_SEED", "WHEAT", 12])
+            market.append(["BUY_SEED", "CARROT", 8])
+            market.append(["BUY_SEED", "MELON", 2])
+        for c in self.CROPS:
+            if seeds.get(c, 0) < 3 and money > 500 and day <= 19:
+                market.append(["BUY_SEED", c, 3])
+        # dump EVERYTHING, every turn, no floors
+        for item, n in shed.items():
+            if n > 0:
+                market.append(["SELL", item, n])
+        if me.get("hires_today", 0) < 8 and money > 100:
+            market.append(["HIRE"])
+        unlocked = len(me.get("unlocked_quadrants", []))
+        if 0 < unlocked <= 3 and day >= LAND_DAYS[unlocked - 1] \
+                and money > LAND_COSTS[unlocked - 1] + 500:
+            market.append(["BUY_LAND"])
+
+        field = []
+        for u_idx, pos in _each_unit(obs):
+            t = tiles[pos[1]][pos[0]] if 0 <= pos[1] < 10 and 0 <= pos[0] < 10 else "LOCKED"
+            if t == "LOCKED":
+                field.append(_step(pos, [4, 4]))
+                continue
+            if isinstance(t, dict) and t.get("kind") == "WEED":
+                field.append(["DIG"])
+                continue
+            if isinstance(t, dict) and t.get("kind") == "PLANT":
+                age = day - t.get("planted_day", day)
+                if t.get("yield_units", 0) > 0 and age >= self.FIRST[t.get("crop", "WHEAT")]:
+                    field.append(["HARVEST"])
+                    continue
+                if not t.get("watered_today"):
+                    field.append(["WATER"])
+                    continue
+            if t is None:
+                c = self.CROPS[(pos[0] + pos[1]) % 4]
+                if seeds.get(c, 0) > 0 and day <= 19:
+                    field.append(["PLANT", c])
+                    seeds[c] -= 1
+                    continue
+            thirsty, ready, empty = [], [], []
+            for y in range(10):
+                for x in range(10):
+                    c = tiles[y][x]
+                    if c == "LOCKED":
+                        continue
+                    if isinstance(c, dict) and c.get("kind") == "PLANT":
+                        age = day - c.get("planted_day", day)
+                        if c.get("yield_units", 0) > 0 and age >= self.FIRST[c.get("crop", "WHEAT")]:
+                            ready.append((x, y))
+                        elif not c.get("watered_today"):
+                            thirsty.append((x, y))
+                    elif c is None and day <= 19:
+                        empty.append((x, y))
+            tgt = (ready or thirsty or empty)
+            tgt = _nearest(pos, tgt) if tgt else None
+            field.append(_step(pos, list(tgt)) if tgt else ["PASS"])
+        return {"farmer": field[0], "hands": field[1:], "market": market[:10]}
+
+
 def run_arch(seeds):
     from src.simulator import Simulator
     from main import Agent
 
-    for name, factory in (("wheat", WheatBot), ("dairy", DairyBot)):
+    for name, factory in (("wheat", WheatBot), ("dairy", DairyBot),
+                          ("flooder", FlooderBot)):
         solo, margin = [], []
         ok = True
         for s in seeds:

@@ -179,4 +179,22 @@ TOMATO_OPP_TARGET = 4
 TOMATO_OPP_LAST_DAY = 21
 TOMATO_OPP_CAP = 2
 
+# Flood response (clean-rebuild 3100 weapon #1): ladder flooders (Yash:
+# ~76k units/game) collapse shared prices; price-waiting (floors + small
+# tranches) then earns $0 while the shed rots. When a REAL glut persists
+# (shed filling + 2+ premiums under floor for 2+ days), switch to volume:
+# sell staples at any price >= 2, premiums >= 3, double tranches, pause
+# premium seed buys. Solo-neutral (solo prices rise; trigger can't fire).
+FLOOD_SHED_LOAD = 60
+FLOOD_MIN_CRASHED = 2
+FLOOD_ENTER_DAYS = 2
+FLOOD_EXIT_DAYS = 2
+FLOOD_FLOOR_STAPLE = 2
+FLOOD_FLOOR_PREM = 3
+# Liquidity-gated patience (Yash lesson, second half): waiting for good
+# prices is a RICH-agent luxury. Below this bank, everything at >= 2 moves
+# (volume compounds; $2 today > $0 ever). Above it, floors/tranches work.
+POOR_MONEY = 5000
+POOR_FLOOR = 2
+
 
