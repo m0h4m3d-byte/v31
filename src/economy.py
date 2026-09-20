@@ -21,6 +21,7 @@ from src.config import (
 
 from src.config import (
     SHED_CAPACITY, SHED_DUMP_AT, SELL_HOLD_DAY, SELL_FLOOR_MIN, LIQUIDATE_DAY,
+    LAST_PLAYABLE_DAY,
     FORCE_SLIDE_DROP, FORCE_PEAK_FLOOR,
     MELON_FLOOR_MIN,
     MILK_BULL_D12, MILK_BULL_HOLD_DAY, MILK_BAIL_FROM_DAY, MILK_BAIL_FACTOR,
@@ -38,6 +39,8 @@ from src.config import (
     CROP_LINK_ON, CTE_START_DAY,
     FLOOD_SHED_LOAD, FLOOD_MIN_CRASHED, FLOOD_ENTER_DAYS, FLOOD_EXIT_DAYS,
     FLOOD_FLOOR_STAPLE, FLOOD_FLOOR_PREM, POOR_MONEY, POOR_FLOOR,
+    HEAT_DAYS, HEAT_WHEAT_HOT, HEAT_WHEAT_COLD, HEAT_STRAW_HOT,
+    HEAT_STRAW_COLD, HEAT_MELON_HOT, HEAT_MELON_COLD, HEAT_SEEDS,
 )
 
 
@@ -89,6 +92,8 @@ class MarketEngine:
         self.flood_days = 0
         self.flood_off_days = 0
         self.flood_last_day = -1
+        self.heat_day = -1
+        self.heat_seeds = {"WHEAT": 15, "STRAWBERRY": 20, "MELON": 5}
 
     def _on_day(self, day: int):
         """Roll over day-trackers; a fresh game looks like a day reset."""
@@ -216,9 +221,28 @@ class MarketEngine:
                 if _c <= money - pending:
                     buy("feed_emg", 10, _c, ["BUY_PRODUCT", "WHEAT", _q], floor=0)
 
-        # Baseline seed flow (restored with the mix).
-        seed_plan = {"WHEAT": (15, 24, 8, 0), "MELON": (5, 10, 5 if day == 0 else 6, 0),
-                     "STRAWBERRY": (self.plan["STRAWBERRY"], 14, 10, 3)}
+        # Price-heat mix: weekly re-classification feeds hot lines and
+        # starves cold ones (v8: skim healthy premiums, race drained wheat).
+        if day in HEAT_DAYS and day != self.heat_day:
+            self.heat_day = day
+            wp = prices.get("WHEAT", 25)
+            sp = prices.get("STRAWBERRY", 120)
+            mp = prices.get("MELON", 250)
+            self.heat_seeds["WHEAT"] = HEAT_SEEDS["WHEAT"][0 if wp >= HEAT_WHEAT_HOT else (2 if wp <= HEAT_WHEAT_COLD else 1)]
+            self.heat_seeds["STRAWBERRY"] = HEAT_SEEDS["STRAWBERRY"][0 if sp >= HEAT_STRAW_HOT else (2 if sp <= HEAT_STRAW_COLD else 1)]
+            self.heat_seeds["MELON"] = HEAT_SEEDS["MELON"][0 if mp >= HEAT_MELON_HOT else (2 if mp <= HEAT_MELON_COLD else 1)]
+            # Season wall: past the plant window, heat can only go DOWN
+            # (buying unmatturable seeds = burning money; measured -5k solo
+            # from day-21 straw/wheat raises that never yielded).
+            if day + 10 > LAST_PLAYABLE_DAY:
+                self.heat_seeds["STRAWBERRY"] = min(self.heat_seeds["STRAWBERRY"], HEAT_SEEDS["STRAWBERRY"][2])
+                self.heat_seeds["MELON"] = min(self.heat_seeds["MELON"], HEAT_SEEDS["MELON"][2])
+            if day + 2 > LAST_PLAYABLE_DAY:
+                self.heat_seeds["WHEAT"] = min(self.heat_seeds["WHEAT"], HEAT_SEEDS["WHEAT"][2])
+        # Baseline seed flow; targets heat-scaled (base = middle tier).
+        seed_plan = {"WHEAT": (self.heat_seeds["WHEAT"], 24, 8, 0),
+                     "MELON": (self.heat_seeds["MELON"], 10, 5 if day == 0 else 6, 0),
+                     "STRAWBERRY": (self.heat_seeds["STRAWBERRY"], 14, 10, 3)}
         # Linked ROI gate (single source with planner): CTE seeds join ONLY
         # when the shared ranking admits them (beating wheat x margin).
         if CROP_LINK_ON and market_inventory is not None and day >= CTE_START_DAY:

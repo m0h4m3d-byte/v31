@@ -207,4 +207,20 @@ FLOOD_FLOOR_PREM = 3
 POOR_MONEY = 5000
 POOR_FLOOR = 2
 
+# Price-heat mix (v8 autopsy: ZZZ skimmed healthy premiums while we flooded
+# wheat; Pedro raced hot wheat while we sat fixed). Re-evaluated weekly:
+# feed hot lines (raise seed targets), starve cold ones. REGIME TRADEOFF
+# (measured): -5k solo / +5k mirror / +6k dairy. Kept: ladder is shared
+# games (mirror/dairy regime), solo is only the engine proxy.
+# Eval from day 7 (day-0 prices are always base = no signal; init middle).
+HEAT_DAYS = (7, 14, 21)
+HEAT_WHEAT_HOT = 40
+HEAT_WHEAT_COLD = 20
+HEAT_STRAW_HOT = 200
+HEAT_STRAW_COLD = 120
+HEAT_MELON_HOT = 250
+HEAT_MELON_COLD = 150
+HEAT_SEEDS = {"WHEAT": (25, 15, 8), "STRAWBERRY": (28, 20, 12),
+              "MELON": (8, 5, 2)}
+
 
