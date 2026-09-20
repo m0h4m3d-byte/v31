@@ -18,7 +18,8 @@ To change a value, edit it HERE ONLY. No hidden env var can override it.
 # can't validate; baseline wins all 4 local gates. Kept from the experiment:
 # melon_cap=PLAN (ladder liability guard, mirror-validated) and the 3-melon
 # opening (vs legacy 5). No per-shop adaptation.
-PLAN = {"COW": 10, "SHEEP": 5, "GOOSE": 0, "MELON": 12, "STRAWBERRY": 20, "WHEAT": 15}
+# GOOSE TRIAL (top5 run ~1.5; Yash moved 8k eggs): 0 -> 2, gates decide.
+PLAN = {"COW": 10, "SHEEP": 5, "GOOSE": 2, "MELON": 12, "STRAWBERRY": 20, "WHEAT": 15}
 
 LAND_COSTS = [1000, 2000, 4000]
 LAND_DAYS = [6, 9, 12]
@@ -27,7 +28,10 @@ LAND_DAYS = [6, 9, 12]
 LAND_BUY_BUFFER = 300
 
 HIRE_TARGET = 10
-# Winners hire ~295/season (vs our 310+). Leaner target; poor-world skip kept.
+# REVERTED 8 -> 10: our engine starves at 8 (-15k solo / -13k dairy;
+# production loss >> hire savings). Leaders' 286-hire efficiency needs
+# THEIR dispatch; ours needs its labor. The hire tax is paid by
+# out-producing it, not by cuts. Poor-world skip kept.
 HIRE_POOR_MONEY = 1200
 HIRE_POOR_HANDS = 10
 PASTURE_BUFFER = 2

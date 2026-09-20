@@ -312,7 +312,11 @@ class MarketEngine:
                 if (wool_now < WOOL_CRASH_PRICE
                         or (wool_peak >= 100 and wool_now < WOOL_CRASH_DROP * wool_peak)):
                     sheep_target = min(sheep_target, WOOL_NO_YARN_CAP)
-            for animal, target in (("SHEEP", sheep_target), ("COW", cow_target)):
+            # Goose trial: join the pen loop at PLAN target (coop path in
+            # planner already keys off animals_ordered["GOOSE"]).
+            goose_target = self.plan["GOOSE"] if day >= 3 else 0
+            for animal, target in (("SHEEP", sheep_target), ("COW", cow_target),
+                                   ("GOOSE", goose_target)):
                 # no-waste-buying: skip if beyond last viable day for this animal
                 if day > _ANIMAL_LAST_DAY.get(animal, 24):
                     continue
