@@ -203,7 +203,7 @@ class MarketEngine:
                 feed_cap = 4 if animals_now <= 2 else 2 if animals_now < 8 else 3
                 buy("feed", feed_cap, q * wheat_price, ["BUY_PRODUCT", "WHEAT", q], floor=0)
 
-        # User plan: WHEAT 15 MELON 5 (2825$) — cap melon 5 day0
+        # Baseline seed flow (restored with the mix).
         seed_plan = {"WHEAT": (15, 24, 8, 0), "MELON": (5, 10, 5 if day == 0 else 6, 0),
                      "STRAWBERRY": (self.plan["STRAWBERRY"], 14, 10, 3)}
         # Linked ROI gate (single source with planner): CTE seeds join ONLY
@@ -411,8 +411,6 @@ class MarketEngine:
             self.milk_bull = prices.get("MILK", 160) >= MILK_BULL_D12
             self.milk_d12_price = prices.get("MILK", 160)
         milk_gate = MILK_BULL_HOLD_DAY if self.milk_bull else SELL_HOLD_DAY["MILK"]
-        if poor:
-            milk_gate = 0
         # Phase 11: late-game bail - bulls that start sliding at d16+ (the
         # d12 check cannot see a d21-29 collapse) dump at the visible
         # -15% level instead of riding the hold to crash prices.
@@ -493,7 +491,10 @@ class MarketEngine:
                 and prices.get("STRAWBERRY", 120) < STRAW_BAIL_FACTOR * self.straw_d12_price):
             straw_gate = day
             self.bail_fires += 1
-        straw_hold = bool(self.straw_bull) and day < straw_gate and not poor
+        # Holds are the timing system: even the poor respect bull/bail (in a
+        # RISING market patience pays; poor-mode only lowers floors, never
+        # forces timing). Flood/glut timing is flood-mode's job, not poor's.
+        straw_hold = bool(self.straw_bull) and day < straw_gate
         if strawberry > 0 and (force_dump
                                or (not straw_hold
                                    and (prices.get("STRAWBERRY", 120) >= 30

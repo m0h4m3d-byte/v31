@@ -205,6 +205,7 @@ class FarmPlanner:
                 elif isinstance(_t, dict) and _t.get("kind") == "WEED":
                     _weed_count += 1
         _dig_prio = self.WEED_PRIORITY_PRIO if _weed_count >= self.WEED_PRIORITY_THRESHOLD else 3
+        # Bisect: cap back to legacy 28 (PLAN-link cost -8k solo in test).
         melon_cap = 28
         melon_on_field = sum(1 for row in tiles for t in row
                              if isinstance(t, dict) and t.get("kind") == "PLANT"
@@ -329,6 +330,8 @@ class FarmPlanner:
                           if isinstance(t, dict) and t.get("kind") == "PLANT")
         p_target = plant_target(day)
         # Fixed NW 20+5 for high efficiency
+        # Opening restored to legacy 5-melon (bisect: the 3-melon variant
+        # cost ~3k solo with no mirror gain).
         FIXED_NW_20 = [
             (0,0,"MELON"), (1,0,"MELON"), (2,0,"MELON"), (3,0,"MELON"), (4,0,"MELON"),
             (0,1,"WHEAT"), (1,1,"WHEAT"), (2,1,"WHEAT"), (3,1,"WHEAT"), (4,1,"WHEAT"),

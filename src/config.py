@@ -10,12 +10,15 @@ To change a value, edit it HERE ONLY. No hidden env var can override it.
 # ============================================================
 # Core economy — frozen effective values (were KAGG_* defaults)
 # ============================================================
-# WINNER RECIPE (clean-rebuild): reverse-engineered from 20 ladder replays
-# (winners day-15: cows 7.3 / sheep 5.0 / wheat 6.5 / straw 34.7 / melon 9.4).
-# Engine tactics (economy/planner/decision) are the proven legacy machinery;
-# ONLY the strategy numbers changed. No per-shop adaptation (v6's adaptive
-# herd won mirror +16.8% but lost ladder 610.9 -> 565.7: fixed plan wins).
-PLAN = {"COW": 8, "SHEEP": 4, "GOOSE": 0, "MELON": 8, "STRAWBERRY": 30, "WHEAT": 12}
+# BASELINE MIX (restored): the leader-mix transplant (wheat carpet 22,
+# melon cap 2-8, straw 28) cost -9k solo / -4k mirror / -18k wheat-margin on
+# OUR engine: our labor can't service 22 wheat + 28 straw + 14 animals, the
+# wheat carpet crashes our own shared price, and amputating the melon wave
+# kills compounding. Leader games are a titan-vs-titan regime our gates
+# can't validate; baseline wins all 4 local gates. Kept from the experiment:
+# melon_cap=PLAN (ladder liability guard, mirror-validated) and the 3-melon
+# opening (vs legacy 5). No per-shop adaptation.
+PLAN = {"COW": 10, "SHEEP": 5, "GOOSE": 0, "MELON": 12, "STRAWBERRY": 20, "WHEAT": 15}
 
 LAND_COSTS = [1000, 2000, 4000]
 LAND_DAYS = [6, 9, 12]
