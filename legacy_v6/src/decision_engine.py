@@ -1,0 +1,230 @@
+"""
+decision_engine.py - Evaluates candidate decisions with the market model.
+
+Components:
+    SellAdvisor   - sell-now vs hold, per product, using price projection
+                    (live: main.py Solution A vets SELL orders through it)
+    CropAdvisor   - ranks crops by projected ROI for the current day
+    linked_crop_order - ONE shared planting order for seed buying
+                    (economy) and planting (planner), margin-gated CTE
+
+Usage:
+    from src.decision_engine import linked_crop_order
+    order = linked_crop_order(day, market_ctx)
+"""
+
+from src.market_model import MarketModel, TownDemand
+from src.config import (
+    MELON_LAST_DAY, STRAWBERRY_LAST_DAY,
+    CARROT_OPP_LAST_DAY, TOMATO_OPP_LAST_DAY, CROP_LINK_MARGIN,
+)
+
+# Products we may strategically hold back (perishables excluded).
+HOLDABLE = {"MILK", "WOOL", "WHEAT", "CARROT", "EGG", "TOMATO", "STRAWBERRY", "MELON", "FERTILIZER"}
+MIN_ORDER_UNITS = 5      # don't waste a market slot on tiny piles
+DEFAULT_HORIZON = 4      # days to project when comparing hold vs sell
+
+
+# Typical dump size per crop when OUR field flushes. Volume crops (melon)
+# crater their own price; pricing the tranche marginally captures that.
+CROP_TRANCHE = {"WHEAT": 60, "CARROT": 30, "TOMATO": 15,
+                "STRAWBERRY": 15, "MELON": 30}
+
+
+def _get_crops():
+    try:
+        from kaggle_environments.envs.kaggriculture import kaggriculture as K_CROPS_HOST
+        return K_CROPS_HOST.CROPS
+    except Exception:
+        return {}
+
+
+def project_harvest_prices(market_ctx):
+    """{crop: projected price at its typical harvest day} for planting today."""
+    day = market_ctx["day"]
+    mm = MarketModel(market_ctx["inventory"],
+                     town=TownDemand(market_ctx.get("shops") or [], day))
+    out = {}
+    for crop, cd in _get_crops().items():
+        h = day + cd["max_yield_day"]
+        if h <= 29:
+            out[crop] = mm.projected_price(crop, h - day)
+    return out
+
+
+def crop_ranking_from_ctx(market_ctx):
+    """[(crop, roi)] sorted best-first by projected net $/tile for planting today.
+
+    Uses the MARGINAL price of our typical flush tranche (not the flat
+    snapshot price) so volume crops don't look better than they are, plus
+    per-day normalization by occupancy so ongoing crops compare fairly
+    against one-time ones.
+    """
+    day = market_ctx["day"]
+    mm = MarketModel(market_ctx["inventory"],
+                     town=TownDemand(market_ctx.get("shops") or [], day))
+    scored = []
+    for crop in ("MELON", "STRAWBERRY", "WHEAT", "CARROT", "TOMATO"):
+        cd = _get_crops().get(crop)
+        if cd is None:
+            continue
+        harvest_day = day + cd["max_yield_day"]
+        if harvest_day > 29 or (day + cd["first_yield_day"]) > 29:
+            scored.append((-10 ** 9, crop))
+            continue
+        tranche = CROP_TRANCHE[crop]
+        inv_h = mm.project_inventory(crop, harvest_day - day)
+        later = MarketModel({crop: inv_h}, mm.params, mm.town)
+        avg_price = later.sell_revenue(crop, tranche) / tranche
+        # Ongoing crops produce their max_yield across several productions;
+        # one-time crops yield once. Occupancy days differ -> normalize /tile/day.
+        occupancy = (17 if crop == "STRAWBERRY" else
+                     12 if crop == "TOMATO" else
+                     cd["max_yield_day"] + 1)
+        roi_per_day = (cd["max_yield"] * avg_price - cd["seed"]) / occupancy
+        scored.append((roi_per_day, crop))
+    scored.sort(reverse=True)
+    return [(crop, roi) for roi, crop in scored]
+
+
+def linked_crop_order(day, market_ctx):
+    """ONE shared planting order for seed buying (economy) and planting
+    (planner), ranked by projected ROI/tile/day with margin.
+
+    Rules: core (STRAWBERRY/MELON/WHEAT) ordered best-first inside their
+    seasons; WHEAT always kept as staple fallback; CARROT/TOMATO join ONLY
+    by beating wheat x CROP_LINK_MARGIN. Unfinishable crops excluded.
+    Returns None on any failure (caller falls back to legacy order).
+    """
+    try:
+        ranked = crop_ranking_from_ctx(market_ctx)
+    except Exception:
+        return None
+    try:
+        roi = {c: r for c, r in ranked}
+        DEAD = -1e8
+
+        def ok(crop):
+            if roi.get(crop, DEAD) <= DEAD:
+                return False
+            if crop == "STRAWBERRY" and day > STRAWBERRY_LAST_DAY:
+                return False
+            if crop == "MELON" and day > MELON_LAST_DAY:
+                return False
+            if crop == "CARROT" and day > CARROT_OPP_LAST_DAY:
+                return False
+            if crop == "TOMATO" and day > TOMATO_OPP_LAST_DAY:
+                return False
+            return True
+
+        core = [c for c in ("STRAWBERRY", "MELON", "WHEAT") if ok(c)]
+        core.sort(key=lambda c: roi.get(c, -1e18), reverse=True)
+        if "WHEAT" not in core:
+            core.append("WHEAT")  # staple fallback, never plant nothing
+        out = list(core)
+        wheat_roi = roi.get("WHEAT", -1e18)
+        for cte in ("CARROT", "TOMATO"):
+            if ok(cte) and roi.get(cte, -1e18) >= CROP_LINK_MARGIN * wheat_roi:
+                out.append(cte)
+        return out or None
+    except Exception:
+        return None
+
+
+class SellAdvisor:
+    """Chooses the best dump-day per product: sell now, or hold until day d*.
+
+    For each candidate offset d in [0 .. max_horizon] we project inventory
+    forward d days (town drain only) and compute the revenue of dumping the
+    whole pile on that day, discounted by REINVEST_RATE per day — early cash
+    compounds into seeds/animals, so future revenue must beat that growth.
+    """
+
+    def __init__(self, horizon_days=DEFAULT_HORIZON, reinvest_rate=0.03,
+                 min_hold_edge=1.05):
+        self.horizon = horizon_days
+        self.reinvest_rate = reinvest_rate
+        # Hold only when the projected discounted gain clears this multiple
+        # of sell-now revenue. Our drain projection ignores OUR OWN future
+        # sales (which raise inventory and depress prices), so demanding a
+        # healthy edge compensates for that systematic optimism.
+        self.min_hold_edge = min_hold_edge
+
+    def advise(self, obs):
+        day, hour = obs["day"], obs["hour"]
+        days_left = 29 - day
+        mm = MarketModel.from_obs(obs)
+        shed = obs["private"]["shed"]
+        # Season ending: dump everything regardless of projections.
+        force_sell = days_left <= 1
+        plan = {}
+        for item, n in shed.items():
+            if item not in HOLDABLE or n <= 0:
+                continue
+            n = int(n)
+            if force_sell or n < MIN_ORDER_UNITS:
+                plan[item] = ("SELL", n)
+                continue
+            max_d = min(self.horizon, days_left)
+            rev_now = mm.sell_revenue(item, n)
+            best_score, best_d = -1.0, 0
+            for d in range(1, max_d + 1):
+                inv_d = mm.project_inventory(item, d)
+                later = MarketModel({item: inv_d}, mm.params, mm.town)
+                rev = later.sell_revenue(item, n)
+                score = rev * ((1 - self.reinvest_rate) ** d)
+                if score > best_score:
+                    best_score, best_d = score, d
+            if best_score >= rev_now * self.min_hold_edge:
+                plan[item] = ("HOLD", n)
+            else:
+                plan[item] = ("SELL", n)
+        return plan
+
+
+class CropAdvisor:
+    def __init__(self):
+        pass
+
+    def rank(self, obs):
+        """Crops ranked best-first by projected net $/tile."""
+        mm = MarketModel.from_obs(obs)
+        day = obs["day"]
+        scored = []
+        for crop in ("MELON", "STRAWBERRY", "WHEAT", "CARROT", "TOMATO"):
+            roi, price = mm.crop_roi(crop, day)
+            scored.append((roi, crop, price))
+        scored.sort(reverse=True)
+        return scored
+
+
+class DecisionEngine:
+    def __init__(self, sell_advisor=None):
+        self.sell = sell_advisor or SellAdvisor()
+        self.crop = CropAdvisor()
+
+    def review(self, obs):
+        return {
+            "sell_plan": self.sell.advise(obs),
+            "crop_rank": self.crop.rank(obs),
+        }
+
+
+# (Retired AdaptiveAgent experiment vehicle removed: never wired into the
+# production path; the position it tested is covered by Solution A.)
+
+
+if __name__ == "__main__":
+    obs = {
+        "day": 12,
+        "hour": 5,
+        "town": {"unlocked_shops": ["BAKERY", "PIZZA_SHOP"]},
+        "market": {"inventory": {"MILK": 9900, "WOOL": 10100, "WHEAT": 9950,
+                                 "CARROT": 10000, "EGG": 10000, "TOMATO": 10000,
+                                 "STRAWBERRY": 10000, "MELON": 10000, "FERTILIZER": 10000}},
+        "private": {"shed": {"MILK": 30, "WOOL": 25, "WHEAT": 80}},
+    }
+    eng = DecisionEngine()
+    review = eng.review(obs)
+    print("sell plan:", review["sell_plan"])
+    print("crop rank:", [(c, f"${roi:,.0f}") for roi, c, _ in review["crop_rank"]])

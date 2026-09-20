@@ -10,7 +10,12 @@ To change a value, edit it HERE ONLY. No hidden env var can override it.
 # ============================================================
 # Core economy — frozen effective values (were KAGG_* defaults)
 # ============================================================
-PLAN = {"COW": 10, "SHEEP": 5, "GOOSE": 0, "MELON": 12, "STRAWBERRY": 20, "WHEAT": 15}
+# WINNER RECIPE (clean-rebuild): reverse-engineered from 20 ladder replays
+# (winners day-15: cows 7.3 / sheep 5.0 / wheat 6.5 / straw 34.7 / melon 9.4).
+# Engine tactics (economy/planner/decision) are the proven legacy machinery;
+# ONLY the strategy numbers changed. No per-shop adaptation (v6's adaptive
+# herd won mirror +16.8% but lost ladder 610.9 -> 565.7: fixed plan wins).
+PLAN = {"COW": 8, "SHEEP": 4, "GOOSE": 0, "MELON": 8, "STRAWBERRY": 30, "WHEAT": 12}
 
 LAND_COSTS = [1000, 2000, 4000]
 LAND_DAYS = [6, 9, 12]
@@ -18,12 +23,10 @@ LAND_DAYS = [6, 9, 12]
 # Blocks NE-with-$115 / SW-with-$25 buys; neutral once rich.
 LAND_BUY_BUFFER = 300
 
-HIRE_TARGET = 12
-# Flexible hiring, one degree at a time: while poor (money below threshold),
-# skip ONLY the single priciest hire of the day (13th hand = $233 fib tail).
-# Smaller than the rejected cap-8 experiment; workforce impact minimal.
-HIRE_POOR_MONEY = 1500
-HIRE_POOR_HANDS = 12
+HIRE_TARGET = 10
+# Winners hire ~295/season (vs our 310+). Leaner target; poor-world skip kept.
+HIRE_POOR_MONEY = 1200
+HIRE_POOR_HANDS = 10
 PASTURE_BUFFER = 2
 RESERVE = 15
 SHED_CAPACITY = 100
