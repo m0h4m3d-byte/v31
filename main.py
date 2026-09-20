@@ -21,7 +21,7 @@ from src.planner import FarmPlanner
 from src.decision_engine import SellAdvisor
 from src.constants import CROP_CONFIG
 from src.config import LAST_PLAYABLE_DAY, CROP_MAX_PLANT_DAY, PLAN
-from src.portfolio import adapt_herd, shops_signature
+from src.portfolio import adapt_herd, adapt_straw, shops_signature
 
 
 class Agent:
@@ -126,6 +126,9 @@ class Agent:
             if self._plan is None:
                 self._plan = dict(PLAN)
             self._plan.update(adapt_herd(day, _shops, self._plan))
+            # Strawberry target always recomputed from the GLOBAL base
+            # (never ratchets on previously adapted values).
+            self._plan["STRAWBERRY"] = adapt_straw(day, _shops, PLAN)
             self.market.plan.update(self._plan)
             self.planner.plan.update(self._plan)
         # --- Step 1: Generate market orders ---

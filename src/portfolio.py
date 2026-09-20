@@ -76,3 +76,21 @@ def adapt_herd(day, shops, base_plan):
 
 def shops_signature(shops):
     return tuple(sorted(shops or []))
+
+
+# Strawberry shops: every instance demanding it (smoothie/brunch/farmers/
+# ice-cream). Seed target steps with instance count: base 20, +4 per
+# instance up to 28. Day>=3 only (need one real shop wave, not noise).
+STRAWBERRY_SHOPS = ("SMOOTHIE_SHOP", "BRUNCH_SPOT", "FARMERS_MARKET",
+                    "ICE_CREAM_SHOP")
+STRAW_BASE, STRAW_STEP, STRAW_MAX = 20, 4, 28
+
+
+def adapt_straw(day, shops, base):
+    """Adaptive strawberry seed target for straw-heavy draws."""
+    if day < 3 or not shops:
+        return base.get("STRAWBERRY", STRAW_BASE)
+    n = sum(1 for s in shops if s in STRAWBERRY_SHOPS)
+    if n <= 1:
+        return base.get("STRAWBERRY", STRAW_BASE)
+    return min(STRAW_MAX, base.get("STRAWBERRY", STRAW_BASE) + STRAW_STEP * (n - 1))
