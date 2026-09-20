@@ -250,6 +250,12 @@ class FarmPlanner:
                     if t.get("fertilized_until_day", -1) < day:
                         if t["crop"] == "STRAWBERRY" and age >= cd["first_yield_day"]:
                             jobs.append((pos, "FERTILIZE", 2))
+                        elif t["crop"] == "TOMATO" and age >= cd["first_yield_day"]:
+                            # Tomato mirrors strawberry: ongoing scheduled
+                            # yields double (1->2) when fertilized+watered.
+                            # (Wheat fertilize measured harmful solo; melon
+                            # already caps without it; carrot marginal.)
+                            jobs.append((pos, "FERTILIZE", 2))
                 elif isinstance(t, dict) and t.get("kind") == "WEED":
                     jobs.append(((x, y), "DIG", _dig_prio))
                 elif isinstance(t, str) and t == "WEED":
