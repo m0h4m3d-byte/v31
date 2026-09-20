@@ -95,7 +95,10 @@ ANIMALS = {
 }
 SEED_COST = {"WHEAT": 10, "CARROT": 20, "TOMATO": 50, "STRAWBERRY": 100, "MELON": 80}
 
-FEED_RESERVE = 4
+# v7 ladder autopsy (Pruthvij/chch -50k x2): 10-cow herds starved when
+# harvests gapped (reserve 4 = hours of feed; wheat tranches sold the rest).
+# Solo never gaps, ladder does. Reserve a full day+ of herd feed, always.
+FEED_RESERVE = 12
 
 # AnimalAdvisor — was KAGG_ANIMAL_ADVISOR=1 default ON
 ANIMAL_ADVISOR_ON = True

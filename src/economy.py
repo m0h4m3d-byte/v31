@@ -202,6 +202,19 @@ class MarketEngine:
             if q > 0 and q * wheat_price <= money - pending:
                 feed_cap = 4 if animals_now <= 2 else 2 if animals_now < 8 else 3
                 buy("feed", feed_cap, q * wheat_price, ["BUY_PRODUCT", "WHEAT", q], floor=0)
+        # Emergency triage (v7 autopsy): unfed animals + empty shed = escapes
+        # tonight. Buy at ANY price (a 400-cow beats expensive wheat).
+        if animals_now > 0 and shed.get("WHEAT", 0) <= 0:
+            _unfed = 0
+            for _row in me["tiles"]:
+                for _t in _row:
+                    if isinstance(_t, dict) and _t.get("animal") and not _t.get("fed_today"):
+                        _unfed += 1
+            if _unfed > 0:
+                _q = min(_unfed, 10)
+                _c = _q * wheat_price
+                if _c <= money - pending:
+                    buy("feed_emg", 10, _c, ["BUY_PRODUCT", "WHEAT", _q], floor=0)
 
         # Baseline seed flow (restored with the mix).
         seed_plan = {"WHEAT": (15, 24, 8, 0), "MELON": (5, 10, 5 if day == 0 else 6, 0),
