@@ -18,7 +18,7 @@ from src.config import (
     LAST_PLAYABLE_DAY,
     PASTURE_LOCATIONS,
     CARROT_OPP_LAST_DAY, TOMATO_OPP_LAST_DAY,
-    CROP_LINK_ON,
+    CROP_LINK_ON, CTE_START_DAY,
 )
 
 # --- Day gates (were src/strategy.py — logic lives here, numbers live in config.py) ---
@@ -69,9 +69,10 @@ def _advisor_crop_order(day, market_ctx):
             order.append(crop)
     if straw_active and not straw_ok:
         order.append("STRAWBERRY")  # still plant some if nothing else fits
-    if CROP_LINK_ON:
+    if CROP_LINK_ON and day >= CTE_START_DAY:
         # Narrow ROI gate: legacy core order untouched; ROI admits CTE only
         # (shared ranking with economy seed buying — one source, no reorder).
+        # Day>=CTE_START_DAY: two shop waves of evidence before diversifying.
         try:
             from src.decision_engine import linked_crop_order
             linked = linked_crop_order(day, market_ctx)
@@ -150,7 +151,8 @@ class FarmPlanner:
         unit_task: per-unit in-flight task (pos + op), reset each day.
     """
 
-    def __init__(self):
+    def __init__(self, plan=None):
+        self.plan = dict(plan) if plan else dict(PLAN)
         self.reset()
 
     def reset(self):
@@ -248,6 +250,12 @@ class FarmPlanner:
                     if t.get("fertilized_until_day", -1) < day:
                         if t["crop"] == "STRAWBERRY" and age >= cd["first_yield_day"]:
                             jobs.append((pos, "FERTILIZE", 2))
+                        elif t["crop"] == "TOMATO" and age >= cd["first_yield_day"]:
+                            # Tomato mirrors strawberry: ongoing scheduled
+                            # yields double (1->2) when fertilized+watered.
+                            # (Wheat fertilize measured harmful solo; melon
+                            # already caps without it; carrot marginal.)
+                            jobs.append((pos, "FERTILIZE", 2))
                 elif isinstance(t, dict) and t.get("kind") == "WEED":
                     jobs.append(((x, y), "DIG", _dig_prio))
                 elif isinstance(t, str) and t == "WEED":
@@ -277,7 +285,7 @@ class FarmPlanner:
                                 break
         _skip_build_day0 = (day == 0 and _hour < 12)
         if not _skip_build_day0 and not _is_final and day > 2:
-            build_target = min(PLAN["COW"] + PLAN["SHEEP"],
+            build_target = min(self.plan["COW"] + self.plan["SHEEP"],
                                sum(animals_ordered.get(k, 0) for k in ("COW", "SHEEP")) + PASTURE_BUFFER)
             total_pastures = self._count_structs(tiles, "PASTURE")
             pasture_jobs = total_pastures

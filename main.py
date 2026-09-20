@@ -20,7 +20,8 @@ from src.economy import MarketEngine
 from src.planner import FarmPlanner
 from src.decision_engine import SellAdvisor
 from src.constants import CROP_CONFIG
-from src.config import LAST_PLAYABLE_DAY, CROP_MAX_PLANT_DAY
+from src.config import LAST_PLAYABLE_DAY, CROP_MAX_PLANT_DAY, PLAN
+from src.portfolio import adapt_herd, adapt_straw, shops_signature
 
 
 class Agent:
@@ -47,14 +48,18 @@ class Agent:
     # Default (5%) maintains baseline parity when Solution B is active.
     SELL_THRESHOLD = 1.05
 
-    def __init__(self):
+    def __init__(self, plan=None):
+        # plan=None => frozen global PLAN (bit-identical legacy behavior).
+        self._plan = dict(plan) if plan else None
         self.reset()
 
     def reset(self):
         self.day = 0
         self.hour = 0
-        self.market = MarketEngine()
-        self.planner = FarmPlanner()
+        self._plan = None
+        self._shop_sig = None
+        self.market = MarketEngine(plan=self._plan)
+        self.planner = FarmPlanner(plan=self._plan)
 
     # ------------------------------------------------------------------
     # Live views kept for introspection / regression tests.
@@ -110,6 +115,22 @@ class Agent:
         for _inv in invs:
             for _v in _inv.values():
                 incoming += _v or 0
+        # Adaptive portfolio: re-split the pasture budget and re-rank crops
+        # only when the shop SET changes (unlock days). Days 0-2 and
+        # shop-less worlds keep the frozen plan; targets gate future buys,
+        # nothing is force-sold.
+        _shops = list((obs.get("town") or {}).get("unlocked_shops") or [])
+        _sig = shops_signature(_shops)
+        if _sig != self._shop_sig:
+            self._shop_sig = _sig
+            if self._plan is None:
+                self._plan = dict(PLAN)
+            self._plan.update(adapt_herd(day, _shops, self._plan))
+            # Strawberry target always recomputed from the GLOBAL base
+            # (never ratchets on previously adapted values).
+            self._plan["STRAWBERRY"] = adapt_straw(day, _shops, PLAN)
+            self.market.plan.update(self._plan)
+            self.planner.plan.update(self._plan)
         # --- Step 1: Generate market orders ---
         # MarketEngine builds orders (seeds, animals, land, sell orders)
         # Mirrors the monolith's Agent._market_orders exactly for parity

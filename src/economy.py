@@ -35,7 +35,7 @@ from src.config import (
     LAND_COSTS, LAND_DAYS, LAND_BUY_BUFFER,
     CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY, CARROT_OPP_CAP,
     TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY, TOMATO_OPP_CAP,
-    CROP_LINK_ON,
+    CROP_LINK_ON, CTE_START_DAY,
 )
 
 
@@ -61,7 +61,10 @@ class MarketEngine:
         animals_ordered: cumulative animal purchases (reset only per game)
     """
 
-    def __init__(self):
+    def __init__(self, plan=None):
+        # Instance-level plan: None => frozen global PLAN (bit-identical).
+        # The adaptive agent injects a shop-driven plan here instead.
+        self.plan = dict(plan) if plan else dict(PLAN)
         self.reset()
 
     def reset(self):
@@ -173,9 +176,11 @@ class MarketEngine:
                     pending += cost
                     planned += 1
 
-        # no-4th-land experiment: stop at 3 quarters (75 tiles) like leaders — 4th land $4k is fixed rule with ~75% usage, ROI negative late
+        # no-4th-land: stop at 3 quarters (75 tiles) — measured: the $4k SE
+        # plus 25 extra tiles the crew cannot cover loses -11.5% solo.
+        # Reopen ONLY on proof of 10x ($40k return on $4k) in ladder
+        # conditions. Never an explicit option below that bar.
         unlocked = len(me.get("unlocked_quadrants", []))
-        # was: 0 < unlocked < len(LAND_COSTS)+1 (allows 4th at day12); now cap at 3 quadrants
         if 0 < unlocked < len(LAND_COSTS) and day >= LAND_DAYS[unlocked - 1]:
             # Liquidity gate: keep operating buffer after paying (blocks
             # NE-with-$115 / SW-with-$25 buys; neutral once rich).
@@ -193,10 +198,10 @@ class MarketEngine:
 
         # User plan: WHEAT 15 MELON 5 (2825$) — cap melon 5 day0
         seed_plan = {"WHEAT": (15, 24, 8, 0), "MELON": (5, 10, 5 if day == 0 else 6, 0),
-                     "STRAWBERRY": (PLAN["STRAWBERRY"], 14, 10, 3)}
+                     "STRAWBERRY": (self.plan["STRAWBERRY"], 14, 10, 3)}
         # Linked ROI gate (single source with planner): CTE seeds join ONLY
         # when the shared ranking admits them (beating wheat x margin).
-        if CROP_LINK_ON and market_inventory is not None and day >= 3:
+        if CROP_LINK_ON and market_inventory is not None and day >= CTE_START_DAY:
             try:
                 from src.decision_engine import linked_crop_order
                 _linked = linked_crop_order(day, {
@@ -209,10 +214,10 @@ class MarketEngine:
             if _linked:
                 if "CARROT" in _linked:
                     seed_plan["CARROT"] = (CARROT_OPP_TARGET, CARROT_OPP_LAST_DAY,
-                                           CARROT_OPP_CAP, 3)
+                                           CARROT_OPP_CAP, CTE_START_DAY)
                 if "TOMATO" in _linked:
                     seed_plan["TOMATO"] = (TOMATO_OPP_TARGET, TOMATO_OPP_LAST_DAY,
-                                           TOMATO_OPP_CAP, 3)
+                                           TOMATO_OPP_CAP, CTE_START_DAY)
         for crop, (target, last_day, cap, start_day) in seed_plan.items():
             if day > last_day or day < start_day:
                 continue
@@ -230,7 +235,7 @@ class MarketEngine:
             # Sheep target is the plan, full stop. (The retired P4 family of
             # YARN-gated cap arms evaluated to a no-op here: min(PLAN 5,
             # floor 8) == PLAN, all other arms OFF. Removed, not disabled.)
-            sheep_target = PLAN["SHEEP"]
+            sheep_target = self.plan["SHEEP"]
             # Phase 15 (v17 ladder autopsies): milk-crash worlds killed the
             # cow-heavy build. ep 99812812: P(MILK) $185 -> $1 while wool held
             # $240; we kept pouring $400/cow into a dead market. When the
@@ -260,7 +265,7 @@ class MarketEngine:
                         early_slowdown = True
                     if d1 < 0 and d1 < d2:
                         early_slowdown = True
-            cow_target = PLAN["COW"]
+            cow_target = self.plan["COW"]
             crash_fired = False
             if ANIMAL_ADVISOR_ON and day >= ANIMAL_ADVISOR_MIN_DAY:
                 trend_broken = (self.milk_peak >= 100
@@ -282,7 +287,7 @@ class MarketEngine:
                                  and wool_now_g < WOOL_CRASH_DROP * self.wool_season_max)))
                     if not wool_crash_g:
                         sheep_target = max(sheep_target,
-                                           PLAN["COW"] + PLAN["SHEEP"] - cow_frozen)
+                                           self.plan["COW"] + self.plan["SHEEP"] - cow_frozen)
             self.milk_crash_active = crash_fired
             # Wool crash breaker: no-YARN + collapsed wool => hard sheep
             # cap. Tightens the V2A floor (8, ineffective vs PLAN 5) down
