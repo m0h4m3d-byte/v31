@@ -176,9 +176,9 @@ class MarketEngine:
                     pending += cost
                     planned += 1
 
-        # no-4th-land experiment: stop at 3 quarters (75 tiles) like leaders — 4th land $4k is fixed rule with ~75% usage, ROI negative late
+        # no-4th-land: stop at 3 quarters (75 tiles) — measured: the $4k SE
+        # plus 25 extra tiles the crew cannot cover loses -11.5% solo.
         unlocked = len(me.get("unlocked_quadrants", []))
-        # was: 0 < unlocked < len(LAND_COSTS)+1 (allows 4th at day12); now cap at 3 quadrants
         if 0 < unlocked < len(LAND_COSTS) and day >= LAND_DAYS[unlocked - 1]:
             # Liquidity gate: keep operating buffer after paying (blocks
             # NE-with-$115 / SW-with-$25 buys; neutral once rich).
